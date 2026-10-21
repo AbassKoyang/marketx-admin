@@ -1,20 +1,25 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
-import { Coins, Lock, Receipt, Wallet as WalletIcon } from "@phosphor-icons/react";
-import { useWallet, useWalletLedger } from "@/hooks/use-portfolio";
 import {
-  formatCredits,
-  formatDateTime,
-  formatSignedCredits,
-} from "@/lib/utils";
+  CaretRight,
+  Coins,
+  Lock,
+  MagnifyingGlass,
+  Wallet as WalletIcon,
+} from "@phosphor-icons/react";
+import { useAdminOverview, useAdminWallets } from "@/hooks/use-admin";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { formatCredits, formatDateTime } from "@/lib/utils";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TableSkeleton } from "@/components/shared/loading-skeleton";
 import { Pagination } from "@/components/shared/pagination";
 import { MetricCard } from "@/components/shared/metric-card";
-import { Badge } from "@/components/ui/badge";
+import { UserCell } from "@/components/shared/user-cell";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -24,178 +29,214 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-function signed(units: number) {
-  return units === 0 ? "—" : formatSignedCredits(units);
-}
-
-export default function WalletPage() {
+export default function WalletsPage() {
   const [page, setPage] = useState(1);
-  const { data: wallet, isLoading: loadingWallet } = useWallet();
-  const { data: ledger, isLoading: loadingLedger } = useWalletLedger(page);
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 350);
 
-  const available = wallet?.available_balance ?? 0;
-  const reserved = wallet?.reserved_balance ?? 0;
-  const entries = ledger?.results ?? [];
+  const { data: overview } = useAdminOverview();
+  const { data, isLoading, isFetching, isError } = useAdminWallets({
+    page,
+    search: debouncedSearch,
+  });
+
+  const wallets = data?.results ?? [];
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Wallet"
-        description="Simulated virtual-credit wallet. There are no deposits, withdrawals, or real-money payments."
+        title="Wallets"
+        description="Simulated credit balances for every account. Wallets are created on first use."
       />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <MetricCard
-          label="Available"
-          value={loadingWallet ? "—" : formatCredits(available)}
-          sub="Spendable simulated credits"
-          icon={Coins}
+          label="Wallets"
+          value={overview?.wallets.total.toLocaleString() ?? "—"}
+          sub="Accounts with a wallet"
+          icon={WalletIcon}
           index={0}
         />
         <MetricCard
-          label="Reserved"
-          value={loadingWallet ? "—" : formatCredits(reserved)}
-          sub="Held against open buy orders"
-          icon={Lock}
+          label="Available credits"
+          value={formatCredits(overview?.wallets.available ?? 0)}
+          sub="Spendable platform-wide"
+          icon={Coins}
           index={1}
         />
         <MetricCard
-          label="Total"
-          value={loadingWallet ? "—" : formatCredits(available + reserved)}
-          sub={
-            wallet?.updated_at
-              ? `Updated ${formatDateTime(wallet.updated_at)}`
-              : "Available + reserved"
-          }
-          icon={WalletIcon}
+          label="Reserved credits"
+          value={formatCredits(overview?.wallets.reserved ?? 0)}
+          sub="Held against open buy orders"
+          icon={Lock}
           index={2}
         />
       </div>
 
-      <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Ledger
-            </h3>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">
-              Immutable record of every balance movement.
-            </p>
-          </div>
-          <Badge variant="outline" className="text-[9px] uppercase tracking-wider">
-            {ledger?.count ?? 0} entries
-          </Badge>
+      <div className="relative">
+        <MagnifyingGlass
+          size={14}
+          className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+        />
+        <Input
+          value={search}
+          onChange={(event) => {
+            setSearch(event.target.value);
+            setPage(1);
+          }}
+          placeholder="Search by email, username, or name…"
+          className="ps-8"
+          aria-label="Search wallets"
+        />
+      </div>
+
+      {isLoading ? (
+        <div className="border border-border bg-card">
+          <TableSkeleton rows={8} cols={5} />
         </div>
-
-        {loadingLedger ? (
-          <div className="border border-border bg-card">
-            <TableSkeleton rows={8} cols={5} />
+      ) : isError ? (
+        <div className="border border-border bg-card">
+          <EmptyState
+            icon={WalletIcon}
+            title="Could not load wallets"
+            description="Staff access is required to view platform wallets."
+          />
+        </div>
+      ) : wallets.length === 0 ? (
+        <div className="border border-border bg-card">
+          <EmptyState
+            icon={WalletIcon}
+            title="No wallets"
+            description={
+              debouncedSearch
+                ? "No wallet matches this search."
+                : "Wallets are created when an account first needs credits."
+            }
+          />
+        </div>
+      ) : (
+        <div
+          className={
+            "border border-border bg-card" +
+            (isFetching ? " opacity-70 transition-opacity" : "")
+          }
+        >
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="ps-4">User</TableHead>
+                  <TableHead className="text-end">Available</TableHead>
+                  <TableHead className="text-end">Reserved</TableHead>
+                  <TableHead className="text-end">Total</TableHead>
+                  <TableHead className="text-end">Created</TableHead>
+                  <TableHead className="pe-4 text-end">Updated</TableHead>
+                  <TableHead className="w-10" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {wallets.map((wallet, index) => (
+                  <motion.tr
+                    key={wallet.id}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                      type: "spring",
+                      duration: 0.3,
+                      bounce: 0,
+                      delay: Math.min(index * 0.02, 0.16),
+                    }}
+                    className="border-b transition-colors hover:bg-muted/40"
+                  >
+                    <TableCell className="ps-4">
+                      <UserCell
+                        user={wallet.user}
+                        href={`/users/${wallet.user.id}`}
+                        className="min-w-44"
+                      />
+                    </TableCell>
+                    <TableCell className="text-end font-mono text-[11px] tabular-nums">
+                      {formatCredits(wallet.available_balance)}
+                    </TableCell>
+                    <TableCell className="text-end font-mono text-[11px] tabular-nums text-muted-foreground">
+                      {formatCredits(wallet.reserved_balance)}
+                    </TableCell>
+                    <TableCell className="text-end font-mono text-[11px] tabular-nums">
+                      {formatCredits(wallet.total_balance)}
+                    </TableCell>
+                    <TableCell className="text-end text-[10px] text-muted-foreground tabular-nums">
+                      {formatDateTime(wallet.created_at)}
+                    </TableCell>
+                    <TableCell className="pe-4 text-end text-[10px] text-muted-foreground tabular-nums">
+                      {formatDateTime(wallet.updated_at)}
+                    </TableCell>
+                    <TableCell>
+                      <Link
+                        href={`/users/${wallet.user.id}`}
+                        aria-label={`View ${wallet.user.email}`}
+                        className="text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        <CaretRight size={13} />
+                      </Link>
+                    </TableCell>
+                  </motion.tr>
+                ))}
+              </TableBody>
+            </Table>
           </div>
-        ) : entries.length === 0 ? (
-          <div className="border border-border bg-card">
-            <EmptyState
-              icon={Receipt}
-              title="No ledger entries"
-              description="Reserves, releases, and settlement payouts will be recorded here."
-            />
-          </div>
-        ) : (
-          <div className="border border-border bg-card">
-            <div className="hidden md:block">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="ps-4">Entry</TableHead>
-                    <TableHead className="text-end">Available</TableHead>
-                    <TableHead className="text-end">Reserved</TableHead>
-                    <TableHead>Reference</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead className="pe-4 text-end">Created</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {entries.map((entry, index) => (
-                    <motion.tr
-                      key={entry.id}
-                      initial={{ opacity: 0, y: 4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{
-                        type: "spring",
-                        duration: 0.3,
-                        bounce: 0,
-                        delay: Math.min(index * 0.02, 0.16),
-                      }}
-                      className="border-b transition-colors hover:bg-muted/40"
-                    >
-                      <TableCell className="ps-4">
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] uppercase tracking-wider"
-                        >
-                          {entry.entry_type.replace(/_/g, " ")}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-end font-mono text-[11px] tabular-nums">
-                        {signed(entry.available_delta)}
-                      </TableCell>
-                      <TableCell className="text-end font-mono text-[11px] tabular-nums text-muted-foreground">
-                        {signed(entry.reserved_delta)}
-                      </TableCell>
-                      <TableCell className="font-mono text-[10px] text-muted-foreground">
-                        {entry.reference_type}
-                        {entry.reference_id
-                          ? ` · ${entry.reference_id.slice(0, 12)}`
-                          : ""}
-                      </TableCell>
-                      <TableCell className="max-w-[280px] truncate text-[11px] text-muted-foreground">
-                        {entry.description || "—"}
-                      </TableCell>
-                      <TableCell className="pe-4 text-end text-[11px] text-muted-foreground tabular-nums">
-                        {formatDateTime(entry.created_at)}
-                      </TableCell>
-                    </motion.tr>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
 
-            <ul className="divide-y divide-border md:hidden">
-              {entries.map((entry) => (
-                <li key={entry.id} className="flex flex-col gap-1.5 p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <Badge
-                      variant="outline"
-                      className="text-[9px] uppercase tracking-wider"
-                    >
-                      {entry.entry_type.replace(/_/g, " ")}
-                    </Badge>
-                    <span className="font-mono text-[10px] text-muted-foreground">
-                      {formatDateTime(entry.created_at)}
-                    </span>
+          <ul className="divide-y divide-border md:hidden">
+            {wallets.map((wallet) => (
+              <li key={wallet.id}>
+                <Link
+                  href={`/users/${wallet.user.id}`}
+                  className="flex flex-col gap-2 p-4 transition-colors hover:bg-muted/40"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <UserCell user={wallet.user} className="min-w-0" />
+                    <CaretRight
+                      size={13}
+                      className="mt-1 shrink-0 text-muted-foreground"
+                    />
                   </div>
                   <div className="flex items-center justify-between gap-2 font-mono text-[11px] tabular-nums">
-                    <span>available {signed(entry.available_delta)}</span>
+                    <span>
+                      {formatCredits(wallet.available_balance)}{" "}
+                      <span className="font-sans text-muted-foreground">
+                        available
+                      </span>
+                    </span>
                     <span className="text-muted-foreground">
-                      reserved {signed(entry.reserved_delta)}
+                      {formatCredits(wallet.reserved_balance)} reserved
                     </span>
                   </div>
-                  {entry.description && (
-                    <p className="line-clamp-2 text-[10px] text-muted-foreground">
-                      {entry.description}
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ul>
+                  <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+                    <span className="font-mono">
+                      total {formatCredits(wallet.total_balance)}
+                    </span>
+                    <span className="tabular-nums">
+                      {formatDateTime(wallet.updated_at)}
+                    </span>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
 
-            <Pagination
-              page={page}
-              count={ledger?.count ?? 0}
-              onPageChange={setPage}
-            />
-          </div>
-        )}
-      </section>
+          <Pagination
+            page={page}
+            count={data?.count ?? 0}
+            pageSize={20}
+            onPageChange={setPage}
+            className={isFetching ? "opacity-70" : undefined}
+          />
+        </div>
+      )}
+
+      <p className="text-[10px] text-muted-foreground">
+        Balances are simulated virtual credits. There are no deposits,
+        withdrawals, or real-money payments.
+      </p>
     </div>
   );
 }

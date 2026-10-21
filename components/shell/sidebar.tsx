@@ -13,6 +13,7 @@ import {
   Wallet,
   ActivityIcon,
   SignOut,
+  Users,
   X,
   List,
 } from "@phosphor-icons/react";
@@ -24,12 +25,13 @@ import { useState } from "react";
 
 const NAV_ITEMS = [
   { href: "/", label: "Overview", icon: House },
+  { href: "/users", label: "Users", icon: Users },
   { href: "/markets", label: "Markets", icon: ChartBar },
   { href: "/categories", label: "Categories", icon: Tag },
   { href: "/trades", label: "Trades", icon: ArrowsLeftRight },
   { href: "/orders", label: "Orders", icon: ListChecks },
   { href: "/positions", label: "Positions", icon: Briefcase },
-  { href: "/wallet", label: "Wallet", icon: Wallet },
+  { href: "/wallet", label: "Wallets", icon: Wallet },
   { href: "/activity", label: "Activity", icon: ActivityIcon },
 ];
 

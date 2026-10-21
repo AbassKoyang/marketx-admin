@@ -20,6 +20,7 @@ export type UserProfile = {
   avatar: string | null;
   is_onboarded: boolean;
   is_verified: boolean;
+  is_staff?: boolean;
 };
 
 // ─── Markets ─────────────────────────────────────────────────────────────────
@@ -198,6 +199,104 @@ export type ActivityEvent = {
   outcome: number;
   payload: Record<string, unknown>;
   created_at: string;
+};
+
+// ─── Admin (staff-wide) ──────────────────────────────────────────────────────
+
+export type AdminUserCompact = {
+  id: number;
+  email: string;
+  username: string;
+  first_name: string;
+  last_name: string;
+  avatar: string | null;
+};
+
+export type AdminUserWallet = {
+  available_balance: number;
+  reserved_balance: number;
+  total_balance: number;
+};
+
+export type AdminUser = {
+  id: number;
+  email: string;
+  username: string;
+  first_name: string;
+  last_name: string;
+  avatar: string | null;
+  is_active: boolean;
+  is_staff: boolean;
+  is_onboarded: boolean;
+  is_verified: boolean;
+  auth_provider: string;
+  created_at: string;
+  last_login: string | null;
+  wallet: AdminUserWallet;
+  orders_count: number;
+  open_positions_count: number;
+  trades_count: number;
+  realized_pnl: number;
+  cost_basis: number;
+};
+
+export type AdminWallet = {
+  id: number;
+  user: AdminUserCompact;
+  available_balance: number;
+  reserved_balance: number;
+  total_balance: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AdminOrder = Order & {
+  user: AdminUserCompact;
+  outcome_name: string;
+  market_id: number;
+  market_title: string;
+  market_slug: string;
+};
+
+export type AdminPosition = Position & {
+  user: AdminUserCompact;
+  outcome_name: string;
+  market_id: number;
+  market_title: string;
+  market_slug: string;
+};
+
+export type AdminTrade = Trade & {
+  buyer: AdminUserCompact;
+  seller: AdminUserCompact;
+  outcome_name: string;
+  market_id: number;
+  market_title: string;
+  market_slug: string;
+};
+
+export type AdminOverview = {
+  users: { total: number; staff: number; active: number; new_7d: number };
+  wallets: {
+    total: number;
+    available: number;
+    reserved: number;
+  };
+  markets: {
+    total: number;
+    open: number;
+    draft: number;
+    closed: number;
+    resolved: number;
+    void: number;
+  };
+  trading: {
+    orders: number;
+    open_orders: number;
+    trades: number;
+    trades_24h: number;
+    open_positions: number;
+  };
 };
 
 // ─── Pagination ──────────────────────────────────────────────────────────────

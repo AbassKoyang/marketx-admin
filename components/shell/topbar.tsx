@@ -10,18 +10,20 @@ import { Button } from "@/components/ui/button";
 
 const LABELS: Record<string, string> = {
   "/": "Overview",
+  "/users": "Users",
   "/markets": "Markets",
   "/markets/new": "New market",
   "/categories": "Categories",
   "/trades": "Trades",
   "/orders": "Orders",
   "/positions": "Positions",
-  "/wallet": "Wallet",
+  "/wallet": "Wallets",
   "/activity": "Activity",
 };
 
 function getLabel(pathname: string): string {
   if (LABELS[pathname]) return LABELS[pathname];
+  if (pathname.startsWith("/users/")) return "User detail";
   if (pathname.startsWith("/markets/") && pathname.endsWith("/edit"))
     return "Edit market";
   if (pathname.startsWith("/markets/")) return "Market detail";

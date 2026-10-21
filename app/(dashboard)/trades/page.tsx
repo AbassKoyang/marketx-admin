@@ -1,24 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowsLeftRight } from "@phosphor-icons/react";
-import { useMyTrades, useTrades } from "@/hooks/use-trading";
-import { useOutcomes } from "@/hooks/use-outcomes";
+import { ArrowsLeftRight, MagnifyingGlass } from "@phosphor-icons/react";
+import { useAdminTrades } from "@/hooks/use-admin";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { formatDateTime, formatProbability } from "@/lib/utils";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TableSkeleton } from "@/components/shared/loading-skeleton";
 import { Pagination } from "@/components/shared/pagination";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { UserCell, userDisplayName } from "@/components/shared/user-cell";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -27,28 +20,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { cn, formatDateTime, formatProbability } from "@/lib/utils";
 
 export default function TradesPage() {
   const [page, setPage] = useState(1);
-  const [mine, setMine] = useState(false);
-  const [outcome, setOutcome] = useState("all");
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 350);
 
-  const outcomeId = outcome === "all" ? undefined : Number(outcome);
-
-  const allTrades = useTrades(
-    { page, outcome: outcomeId },
-    !mine,
-  );
-  const myTrades = useMyTrades(page, mine);
-  const { data, isLoading, isFetching } = mine ? myTrades : allTrades;
-
-  const { data: outcomesData } = useOutcomes();
-  const outcomeNames = useMemo(() => {
-    const map = new Map<number, string>();
-    outcomesData?.results.forEach((item) => map.set(item.id, item.name));
-    return map;
-  }, [outcomesData]);
+  const { data, isLoading, isFetching, isError } = useAdminTrades({
+    page,
+    search: debouncedSearch,
+  });
 
   const trades = data?.results ?? [];
 
@@ -56,68 +37,37 @@ export default function TradesPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Trades"
-        description="Matched executions across every market. Trades are public and price is the resting order price."
+        description="Every matched execution on the platform, including buyer and seller identities."
       />
 
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="flex items-center gap-1 border border-border p-0.5">
-          <Button
-            variant={mine ? "ghost" : "default"}
-            size="xs"
-            onClick={() => {
-              setMine(false);
-              setPage(1);
-            }}
-            aria-pressed={!mine}
-          >
-            All trades
-          </Button>
-          <Button
-            variant={mine ? "default" : "ghost"}
-            size="xs"
-            onClick={() => {
-              setMine(true);
-              setPage(1);
-            }}
-            aria-pressed={mine}
-          >
-            My trades
-          </Button>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
-            Outcome
-          </Label>
-          <Select
-            value={outcome}
-            onValueChange={(value) => {
-              setOutcome(String(value ?? "all"));
-              setPage(1);
-            }}
-          >
-            <SelectTrigger className="w-52">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All outcomes</SelectItem>
-              {outcomesData?.results.map((item) => (
-                <SelectItem key={item.id} value={String(item.id)}>
-                  {item.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {isFetching && !isLoading && (
-          <span className="text-[10px] text-muted-foreground">Updating…</span>
-        )}
+      <div className="relative">
+        <MagnifyingGlass
+          size={14}
+          className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+        />
+        <Input
+          value={search}
+          onChange={(event) => {
+            setSearch(event.target.value);
+            setPage(1);
+          }}
+          placeholder="Search by buyer, seller, market, or outcome…"
+          className="ps-8"
+          aria-label="Search trades"
+        />
       </div>
 
       {isLoading ? (
         <div className="border border-border bg-card">
-          <TableSkeleton rows={8} cols={5} />
+          <TableSkeleton rows={8} cols={6} />
+        </div>
+      ) : isError ? (
+        <div className="border border-border bg-card">
+          <EmptyState
+            icon={ArrowsLeftRight}
+            title="Could not load trades"
+            description="Staff access is required to view platform trades."
+          />
         </div>
       ) : trades.length === 0 ? (
         <div className="border border-border bg-card">
@@ -125,28 +75,30 @@ export default function TradesPage() {
             icon={ArrowsLeftRight}
             title="No trades"
             description={
-              mine
-                ? "Your executions will appear here after matching."
+              debouncedSearch
+                ? "No execution matches this search."
                 : "Executions appear here as soon as orders match."
             }
           />
         </div>
       ) : (
         <div
-          className={cn(
-            "border border-border bg-card",
-            isFetching && "opacity-70 transition-opacity",
-          )}
+          className={
+            "border border-border bg-card" +
+            (isFetching ? " opacity-70 transition-opacity" : "")
+          }
         >
           <div className="hidden md:block">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="ps-4">Execution</TableHead>
-                  <TableHead>Outcome</TableHead>
+                  <TableHead>Buyer</TableHead>
+                  <TableHead>Seller</TableHead>
+                  <TableHead>Market</TableHead>
                   <TableHead className="text-end">Price</TableHead>
                   <TableHead className="text-end">Quantity</TableHead>
-                  <TableHead className="text-end pe-4">Executed</TableHead>
+                  <TableHead className="pe-4 text-end">Executed</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -166,8 +118,27 @@ export default function TradesPage() {
                     <TableCell className="ps-4 font-mono text-[10px] text-muted-foreground">
                       {trade.execution_id.slice(0, 8)}…
                     </TableCell>
-                    <TableCell className="text-[11px]">
-                      {outcomeNames.get(trade.outcome) ?? `Outcome #${trade.outcome}`}
+                    <TableCell>
+                      <UserCell
+                        user={trade.buyer}
+                        href={`/users/${trade.buyer.id}`}
+                        className="min-w-36"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <UserCell
+                        user={trade.seller}
+                        href={`/users/${trade.seller.id}`}
+                        className="min-w-36"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <p className="max-w-56 truncate text-[11px] font-medium">
+                        {trade.market_title}
+                      </p>
+                      <p className="max-w-56 truncate text-[10px] text-muted-foreground">
+                        {trade.outcome_name}
+                      </p>
                     </TableCell>
                     <TableCell className="text-end font-mono text-[11px] tabular-nums">
                       {formatProbability(trade.price_decimal)}
@@ -175,7 +146,7 @@ export default function TradesPage() {
                     <TableCell className="text-end font-mono text-[11px] tabular-nums">
                       {trade.quantity}
                     </TableCell>
-                    <TableCell className="pe-4 text-end text-[11px] text-muted-foreground tabular-nums">
+                    <TableCell className="pe-4 text-end text-[10px] text-muted-foreground tabular-nums">
                       {formatDateTime(trade.created_at)}
                     </TableCell>
                   </motion.tr>
@@ -186,35 +157,53 @@ export default function TradesPage() {
 
           <ul className="divide-y divide-border md:hidden">
             {trades.map((trade) => (
-              <li key={trade.id} className="flex items-center justify-between gap-3 p-4">
-                <div className="min-w-0">
-                  <p className="truncate text-xs font-medium">
-                    {outcomeNames.get(trade.outcome) ?? `Outcome #${trade.outcome}`}
-                  </p>
-                  <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
-                    {trade.execution_id.slice(0, 8)}… · {formatDateTime(trade.created_at)}
-                  </p>
+              <li key={trade.id} className="flex flex-col gap-2 p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-medium">
+                      {trade.market_title}
+                    </p>
+                    <p className="truncate text-[10px] text-muted-foreground">
+                      {trade.outcome_name}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-end">
+                    <p className="font-mono text-xs tabular-nums">
+                      {formatProbability(trade.price_decimal)}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      × {trade.quantity}
+                    </p>
+                  </div>
                 </div>
-                <div className="shrink-0 text-end">
-                  <p className="font-mono text-xs tabular-nums">
-                    {formatProbability(trade.price_decimal)}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">× {trade.quantity}</p>
-                </div>
+
+                <p className="truncate text-[10px] text-muted-foreground">
+                  <span className="text-foreground">
+                    {userDisplayName(trade.buyer)}
+                  </span>{" "}
+                  bought from{" "}
+                  <span className="text-foreground">
+                    {userDisplayName(trade.seller)}
+                  </span>
+                </p>
+
+                <p className="font-mono text-[10px] text-muted-foreground">
+                  {trade.execution_id.slice(0, 8)}… ·{" "}
+                  {formatDateTime(trade.created_at)}
+                </p>
               </li>
             ))}
           </ul>
 
-          <Pagination page={page} count={data?.count ?? 0} onPageChange={setPage} />
+          <Pagination
+            page={page}
+            count={data?.count ?? 0}
+            pageSize={20}
+            onPageChange={setPage}
+            className={isFetching ? "opacity-70" : undefined}
+          />
         </div>
       )}
-
-      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-        <Badge variant="outline" className="text-[9px] uppercase tracking-wider">
-          Public
-        </Badge>
-        Trade payloads intentionally omit buyer and seller identities.
-      </div>
     </div>
   );
 }
