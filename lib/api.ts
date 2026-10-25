@@ -32,9 +32,7 @@ let failedQueue: Array<{
   config: AxiosRequestConfig;
 }> = [];
 
-// Auth endpoints must never trigger the refresh flow. In particular, a failed
-// /api/auth/refresh/ would otherwise re-enter this interceptor, queue itself
-// behind isRefreshing, and deadlock the original request forever.
+// Auth endpoints must never trigger the refresh flow.
 const AUTH_PATHS = [
   "/api/auth/login/",
   "/api/auth/refresh/",
