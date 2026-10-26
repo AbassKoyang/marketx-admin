@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { useCategoriesList } from "@/hooks/use-categories";
 import { useCreateMarket } from "@/hooks/use-markets";
 import { useCreateOutcome } from "@/hooks/use-outcomes";
-import { getApiErrorMessage } from "@/lib/api";
+import { getApiErrorMessage, getApiFieldErrors } from "@/lib/api";
 import { cn, formatDate, toSlug } from "@/lib/utils";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -57,6 +57,8 @@ type Draft = {
   closes_at: string;
   resolution_deadline: string;
   is_featured: boolean;
+  /** LMSR depth parameter, kept as a string while editing. */
+  liquidity_b: string;
   outcomes: OutcomeDraft[];
 };
 
@@ -85,6 +87,7 @@ function initialDraft(): Draft {
     closes_at: localDateTime(closes),
     resolution_deadline: localDateTime(deadline),
     is_featured: false,
+    liquidity_b: "1000",
     outcomes: [
       { name: "Yes", description: "" },
       { name: "No", description: "" },
@@ -179,6 +182,11 @@ export default function NewMarketPage() {
             "Resolution deadline must be on or after the closing time.";
         }
       }
+      const depth = Number(draft.liquidity_b);
+      if (!draft.liquidity_b.trim() || !Number.isInteger(depth) || depth < 1) {
+        next.liquidity_b =
+          "Liquidity depth must be a whole number of at least 1.";
+      }
     }
 
     if (target === 4) {
@@ -233,6 +241,7 @@ export default function NewMarketPage() {
         closes_at: new Date(draft.closes_at).toISOString(),
         resolution_deadline: new Date(draft.resolution_deadline).toISOString(),
         is_featured: draft.is_featured,
+        liquidity_b: Number(draft.liquidity_b),
       });
 
       createdSlug = market.slug;
@@ -251,8 +260,36 @@ export default function NewMarketPage() {
       toast.success("Market created as a draft");
       router.push(`/markets/${market.slug}`);
     } catch (error) {
-      toast.error(getApiErrorMessage(error));
-      if (createdSlug) router.push(`/markets/${createdSlug}`);
+      // A created market whose outcomes failed should still be reachable so
+      // the operator can finish it from the detail page.
+      if (createdSlug) {
+        toast.error(getApiErrorMessage(error));
+        router.push(`/markets/${createdSlug}`);
+        return;
+      }
+
+      const fieldErrors = getApiFieldErrors(error);
+      const fields = Object.keys(fieldErrors);
+      if (fields.length > 0) {
+        setErrors(fieldErrors);
+        const first = fields[0];
+        setStep(
+          first === "resolution_criteria" ||
+            first === "resolution_source_description" ||
+            first === "resolution_source_url"
+            ? 2
+            : first === "opens_at" ||
+                first === "closes_at" ||
+                first === "resolution_deadline" ||
+                first === "liquidity_b" ||
+                first === "is_featured"
+              ? 3
+              : 1,
+        );
+        toast.error("Check the highlighted fields.");
+      } else {
+        toast.error(getApiErrorMessage(error));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -554,6 +591,29 @@ export default function NewMarketPage() {
                   <FieldError message={errors.resolution_deadline} />
                 </div>
 
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="liquidity-b">Liquidity depth (b)</Label>
+                  <Input
+                    id="liquidity-b"
+                    type="number"
+                    min={1}
+                    step={1}
+                    inputMode="numeric"
+                    value={draft.liquidity_b}
+                    onChange={(event) =>
+                      update("liquidity_b", event.target.value)
+                    }
+                    aria-invalid={!!errors.liquidity_b}
+                  />
+                  <p className="text-[10px] leading-relaxed text-muted-foreground">
+                    Higher depth absorbs larger orders with less price movement,
+                    at the cost of a larger worst-case market-maker subsidy.
+                    Default is 1,000. Changing it later reprices every outcome
+                    immediately.
+                  </p>
+                  <FieldError message={errors.liquidity_b} />
+                </div>
+
                 <Label className="items-start gap-2.5 text-[11px] leading-relaxed text-muted-foreground">
                   <input
                     type="checkbox"
@@ -710,6 +770,14 @@ export default function NewMarketPage() {
                       </dt>
                       <dd className="tabular-nums">
                         {formatDate(draft.resolution_deadline)}
+                      </dd>
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <dt className="uppercase tracking-wider text-muted-foreground">
+                        Liquidity depth
+                      </dt>
+                      <dd className="tabular-nums">
+                        b = {draft.liquidity_b || "—"}
                       </dd>
                     </div>
                     <div className="flex flex-col gap-0.5">

@@ -114,6 +114,7 @@ export function usePublishMarket(slug: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: marketKeys.detail(slug) });
       qc.invalidateQueries({ queryKey: marketKeys.all });
+      qc.invalidateQueries({ queryKey: marketKeys.stats(slug) });
     },
   });
 }
@@ -126,10 +127,15 @@ export function useCloseMarket(slug: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: marketKeys.detail(slug) });
       qc.invalidateQueries({ queryKey: marketKeys.all });
+      qc.invalidateQueries({ queryKey: marketKeys.stats(slug) });
+      qc.invalidateQueries({ queryKey: ["order-book"] });
       qc.invalidateQueries({ queryKey: ["orders"] });
+      qc.invalidateQueries({ queryKey: ["trades"] });
       qc.invalidateQueries({ queryKey: ["activity"] });
       qc.invalidateQueries({ queryKey: ["wallet"] });
+      qc.invalidateQueries({ queryKey: ["wallet-ledger"] });
       qc.invalidateQueries({ queryKey: ["positions"] });
+      qc.invalidateQueries({ queryKey: ["positions-summary"] });
     },
   });
 }
@@ -150,10 +156,16 @@ export function useResolveMarket(slug: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: marketKeys.detail(slug) });
       qc.invalidateQueries({ queryKey: marketKeys.all });
+      qc.invalidateQueries({ queryKey: marketKeys.stats(slug) });
+      qc.invalidateQueries({ queryKey: ["order-book"] });
       qc.invalidateQueries({ queryKey: ["positions"] });
+      qc.invalidateQueries({ queryKey: ["positions-summary"] });
       qc.invalidateQueries({ queryKey: ["trades"] });
       qc.invalidateQueries({ queryKey: ["wallet"] });
+      qc.invalidateQueries({ queryKey: ["wallet-ledger"] });
       qc.invalidateQueries({ queryKey: ["activity"] });
+      qc.invalidateQueries({ queryKey: ["admin"] });
+      qc.invalidateQueries({ queryKey: ["markets"] });
     },
   });
 }
@@ -180,6 +192,9 @@ export function useUpdateMarket(slug: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: marketKeys.detail(slug) });
       qc.invalidateQueries({ queryKey: marketKeys.all });
+      // `liquidity_b` changes reprices every outcome immediately.
+      qc.invalidateQueries({ queryKey: marketKeys.stats(slug) });
+      qc.invalidateQueries({ queryKey: ["order-book"] });
     },
   });
 }

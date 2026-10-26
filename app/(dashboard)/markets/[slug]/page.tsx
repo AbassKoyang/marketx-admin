@@ -26,7 +26,7 @@ import {
   usePublishMarket,
 } from "@/hooks/use-markets";
 import { getApiErrorMessage } from "@/lib/api";
-import { cn, formatDate, formatProbability } from "@/lib/utils";
+import { cn, formatDate, formatTickProbability } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/empty-state";
 import { MetricCard } from "@/components/shared/metric-card";
 import { MarketStatusBadge } from "@/components/shared/status-badge";
@@ -91,6 +91,13 @@ export default function MarketDetailPage() {
   const outcomes = useMemo(
     () => (market?.outcomes ?? []).filter((outcome) => outcome.is_active),
     [market],
+  );
+  const leadingOutcome = useMemo(
+    () =>
+      [...outcomes].sort(
+        (a, b) => (b.current_price ?? -1) - (a.current_price ?? -1),
+      )[0],
+    [outcomes],
   );
   const activeOutcome =
     outcomes.find((outcome) => outcome.id === selectedOutcomeId) ?? outcomes[0];
@@ -263,44 +270,55 @@ export default function MarketDetailPage() {
             <Scales size={12} />
             Resolve by {formatDate(market.resolution_deadline)}
           </span>
+          <span className="inline-flex items-center gap-1.5">
+            <ChartLine size={12} />
+            LMSR b={market.liquidity_b.toLocaleString()}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <DotsThree size={12} />
+            {market.issued_quantity.toLocaleString()} /{" "}
+            {market.issuance_limit.toLocaleString()} sets issued
+          </span>
         </div>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard
-          label="Latest price"
+          label="Leading price"
           value={
-            stats?.latest_price != null
-              ? formatProbability(stats.latest_price)
+            leadingOutcome
+              ? formatTickProbability(leadingOutcome.current_price)
               : "—"
           }
           sub={
-            stats?.last_trade_at
-              ? `Last trade ${formatDate(stats.last_trade_at)}`
-              : "No trades yet"
+            leadingOutcome
+              ? `${leadingOutcome.name} · LMSR vector sums to 100%`
+              : "No active outcomes"
           }
           icon={ChartLine}
           index={0}
         />
         <MetricCard
           label="Volume"
-          value={(stats?.total_volume ?? 0).toLocaleString(undefined, {
-            maximumFractionDigits: 2,
-          })}
-          sub="Reported trade volume"
+          value={(stats?.total_volume ?? 0).toLocaleString()}
+          sub="Contracts traded (shares)"
           index={1}
         />
         <MetricCard
           label="Trades"
           value={stats?.trade_count ?? 0}
-          sub="Matched executions"
+          sub="Executions against the market maker"
           index={2}
         />
         <MetricCard
           label="Outcomes"
           value={outcomes.length}
-          sub={market.status === "draft" ? "Editable while draft" : "Locked after publish"}
+          sub={
+            market.status === "draft"
+              ? "Editable while draft"
+              : `${outcomes.filter((outcome) => outcome.is_active).length} active in the price vector`
+          }
           index={3}
         />
       </div>
@@ -311,7 +329,7 @@ export default function MarketDetailPage() {
           <CardHeader>
             <CardTitle>Outcome price</CardTitle>
             <p className="text-[11px] text-muted-foreground">
-              Historical probability for the selected outcome.
+              Historical LMSR probability for the selected outcome.
             </p>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
@@ -338,9 +356,13 @@ export default function MarketDetailPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Depth</CardTitle>
+            <CardTitle>Market maker liquidity</CardTitle>
             <p className="text-[11px] text-muted-foreground">
-              {activeOutcome ? activeOutcome.name : "Select an outcome"}
+              Indicative AMM depth
+              {activeOutcome ? ` · ${activeOutcome.name}` : ""}
+              {activeOutcome?.current_price != null
+                ? ` at ${formatTickProbability(activeOutcome.current_price)}`
+                : ""}
             </p>
           </CardHeader>
           <CardContent>
@@ -355,7 +377,8 @@ export default function MarketDetailPage() {
           <CardHeader>
             <CardTitle>Outcomes</CardTitle>
             <p className="text-[11px] text-muted-foreground">
-              Winners pay 10,000 credits per contract at settlement.
+              LMSR prices always sum to 100%. Winners pay 10,000 credits per
+              contract at settlement.
             </p>
           </CardHeader>
           <CardContent className="flex flex-col divide-y divide-border/60">
@@ -382,10 +405,13 @@ export default function MarketDetailPage() {
                   <div className="min-w-0">
                     <p className="truncate text-xs font-medium">{outcome.name}</p>
                     <p className="truncate font-mono text-[10px] text-muted-foreground">
-                      {outcome.slug}
+                      {outcome.slug} · net {outcome.net_shares}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
+                    <span className="font-mono text-[11px] tabular-nums text-foreground">
+                      {formatTickProbability(outcome.current_price)}
+                    </span>
                     {outcome.description && (
                       <span className="hidden max-w-40 truncate text-[10px] text-muted-foreground sm:inline">
                         {outcome.description}
@@ -503,7 +529,7 @@ export default function MarketDetailPage() {
         open={closeOpen}
         onOpenChange={setCloseOpen}
         title="Close this market?"
-        description="Closing stops trading immediately and cancels every remaining open order, releasing reserved credits."
+        description="Closing stops trading immediately. Any legacy resting orders are cancelled and their reservations released; market-maker pricing is frozen at close."
         confirmLabel="Close market"
         destructive
         loading={closeMarket.isPending}

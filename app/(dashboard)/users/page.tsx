@@ -44,22 +44,25 @@ import {
 } from "@/components/ui/table";
 
 const ROLE_OPTIONS = [
-  { value: "all", label: "All accounts" },
-  { value: "users", label: "Customers" },
+  { value: "customers", label: "Customers" },
   { value: "staff", label: "Staff" },
+  { value: "market_maker", label: "Market maker" },
+  { value: "all", label: "All accounts" },
 ];
 
 export default function UsersPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
-  const [role, setRole] = useState("all");
+  const [role, setRole] = useState("customers");
   const debouncedSearch = useDebouncedValue(search, 350);
 
   const { data: overview } = useAdminOverview();
   const { data, isLoading, isFetching, isError } = useAdminUsers({
     page,
     search: debouncedSearch,
-    is_staff: role === "staff" ? true : role === "users" ? false : undefined,
+    is_staff: role === "staff" ? true : undefined,
+    market_maker:
+      role === "market_maker" ? true : role === "all" ? undefined : false,
   });
 
   const users = data?.results ?? [];
@@ -68,14 +71,14 @@ export default function UsersPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Users"
-        description="Every account on MarketX, with wallet balances and trading footprint."
+        description="Customer accounts with wallet balances and trading footprint. The market-maker liquidity account is available under its own filter."
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard
-          label="Accounts"
+          label="Customer accounts"
           value={overview?.users.total.toLocaleString() ?? "—"}
-          sub="All registered users"
+          sub="Excludes the liquidity account"
           icon={Users}
           index={0}
         />
@@ -96,7 +99,7 @@ export default function UsersPage() {
         <MetricCard
           label="Available credits"
           value={formatCredits(overview?.wallets.available ?? 0)}
-          sub="Across every wallet"
+          sub="Across customer wallets"
           icon={Coins}
           index={3}
         />
@@ -127,7 +130,7 @@ export default function UsersPage() {
           <Select
             value={role}
             onValueChange={(value) => {
-              setRole(String(value ?? "all"));
+              setRole(String(value ?? "customers"));
               setPage(1);
             }}
           >
@@ -163,8 +166,8 @@ export default function UsersPage() {
             icon={Users}
             title="No users"
             description={
-              debouncedSearch
-                ? "No account matches this search."
+              debouncedSearch || role !== "all"
+                ? "No account matches these filters."
                 : "Registered accounts will appear here."
             }
           />
@@ -216,12 +219,22 @@ export default function UsersPage() {
                     <TableCell>
                       <div className="flex flex-wrap items-center gap-1">
                         <Badge
-                          variant={user.is_staff ? "default" : "outline"}
+                          variant={
+                            user.is_market_maker
+                              ? "secondary"
+                              : user.is_staff
+                                ? "default"
+                                : "outline"
+                          }
                           className="text-[9px] uppercase tracking-wider"
                         >
-                          {user.is_staff ? "Staff" : "Customer"}
+                          {user.is_market_maker
+                            ? "Market maker"
+                            : user.is_staff
+                              ? "Staff"
+                              : "Customer"}
                         </Badge>
-                        {!user.is_active && (
+                        {!user.is_active && !user.is_market_maker && (
                           <Badge
                             variant="outline"
                             className="border-dashed text-[9px] uppercase tracking-wider text-muted-foreground"
@@ -279,10 +292,20 @@ export default function UsersPage() {
                   <div className="flex items-start justify-between gap-2">
                     <UserCell user={user} className="min-w-0" />
                     <Badge
-                      variant={user.is_staff ? "default" : "outline"}
+                      variant={
+                        user.is_market_maker
+                          ? "secondary"
+                          : user.is_staff
+                            ? "default"
+                            : "outline"
+                      }
                       className="shrink-0 text-[9px] uppercase tracking-wider"
                     >
-                      {user.is_staff ? "Staff" : "Customer"}
+                      {user.is_market_maker
+                        ? "Market maker"
+                        : user.is_staff
+                          ? "Staff"
+                          : "Customer"}
                     </Badge>
                   </div>
 
@@ -324,7 +347,8 @@ export default function UsersPage() {
 
       <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
         <Wallet size={13} />
-        Balances are simulated credits. Each wallet is owned by one account.
+        Balances are simulated credits. The market maker holds AMM inventory
+        and cannot sign in.
       </div>
     </div>
   );

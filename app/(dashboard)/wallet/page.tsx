@@ -20,6 +20,14 @@ import { Pagination } from "@/components/shared/pagination";
 import { MetricCard } from "@/components/shared/metric-card";
 import { UserCell } from "@/components/shared/user-cell";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -29,15 +37,28 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+const ACCOUNT_OPTIONS = [
+  { value: "customers", label: "Customers" },
+  { value: "market_maker", label: "Market maker" },
+  { value: "all", label: "All accounts" },
+];
+
 export default function WalletsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
+  const [account, setAccount] = useState("customers");
   const debouncedSearch = useDebouncedValue(search, 350);
 
   const { data: overview } = useAdminOverview();
   const { data, isLoading, isFetching, isError } = useAdminWallets({
     page,
     search: debouncedSearch,
+    market_maker:
+      account === "market_maker"
+        ? true
+        : account === "customers"
+          ? false
+          : undefined,
   });
 
   const wallets = data?.results ?? [];
@@ -46,48 +67,74 @@ export default function WalletsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Wallets"
-        description="Simulated credit balances for every account. Wallets are created on first use."
+        description="Simulated credit balances for customer accounts. The market-maker wallet holds issuance collateral and AMM inventory."
       />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <MetricCard
-          label="Wallets"
+          label="Customer wallets"
           value={overview?.wallets.total.toLocaleString() ?? "—"}
-          sub="Accounts with a wallet"
+          sub="Excludes the liquidity account"
           icon={WalletIcon}
           index={0}
         />
         <MetricCard
           label="Available credits"
           value={formatCredits(overview?.wallets.available ?? 0)}
-          sub="Spendable platform-wide"
+          sub="Spendable across customer wallets"
           icon={Coins}
           index={1}
         />
         <MetricCard
           label="Reserved credits"
           value={formatCredits(overview?.wallets.reserved ?? 0)}
-          sub="Held against open buy orders"
+          sub="Collateral and legacy order reserves"
           icon={Lock}
           index={2}
         />
       </div>
 
-      <div className="relative">
-        <MagnifyingGlass
-          size={14}
-          className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-        />
-        <Input
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
-            setPage(1);
-          }}
-          placeholder="Search by email, username, or name…"
-          className="ps-8"
-          aria-label="Search wallets"
-        />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="relative flex-1">
+          <MagnifyingGlass
+            size={14}
+            className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(1);
+            }}
+            placeholder="Search by email, username, or name…"
+            className="ps-8"
+            aria-label="Search wallets"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5 sm:w-44">
+          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            Account
+          </Label>
+          <Select
+            value={account}
+            onValueChange={(value) => {
+              setAccount(String(value ?? "customers"));
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ACCOUNT_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {isLoading ? (
@@ -108,8 +155,8 @@ export default function WalletsPage() {
             icon={WalletIcon}
             title="No wallets"
             description={
-              debouncedSearch
-                ? "No wallet matches this search."
+              debouncedSearch || account !== "customers"
+                ? "No wallet matches these filters."
                 : "Wallets are created when an account first needs credits."
             }
           />
@@ -235,7 +282,8 @@ export default function WalletsPage() {
 
       <p className="text-[10px] text-muted-foreground">
         Balances are simulated virtual credits. There are no deposits,
-        withdrawals, or real-money payments.
+        withdrawals, or real-money payments. The market maker reserves 10,000
+        credits per minted complete set.
       </p>
     </div>
   );

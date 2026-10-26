@@ -5,7 +5,7 @@ import { ArrowsDownUp } from "@phosphor-icons/react";
 import { useOrderBook } from "@/hooks/use-markets";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatPrice } from "@/lib/utils";
+import { formatTickProbability } from "@/lib/utils";
 import type { OrderBookLevel } from "@/lib/types";
 
 function DepthRow({
@@ -31,7 +31,7 @@ function DepthRow({
         style={{ width: `${width}%` }}
       />
       <span className="relative font-mono text-[11px] tabular-nums text-foreground">
-        {formatPrice(level.price)}
+        {formatTickProbability(level.price)}
       </span>
       <span className="relative font-mono text-[11px] tabular-nums text-muted-foreground">
         {level.quantity}
@@ -59,7 +59,9 @@ function Column({
       </div>
       <div className="flex flex-col divide-y divide-border/60">
         {levels.length === 0 ? (
-          <p className="px-2.5 py-3 text-[11px] text-muted-foreground">No orders</p>
+          <p className="px-2.5 py-3 text-[11px] text-muted-foreground">
+            No liquidity
+          </p>
         ) : (
           levels.map((level) => (
             <DepthRow
@@ -101,7 +103,7 @@ export function OrderBookDepth({
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-          Order book
+          Market maker liquidity
         </span>
         <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
           <span
@@ -113,9 +115,14 @@ export function OrderBookDepth({
             }
           />
           {isOpen ? "Live" : "Stopped"}
+          {data?.current_price != null && (
+            <span className="ms-1 font-mono tabular-nums">
+              · now {formatTickProbability(data.current_price)}
+            </span>
+          )}
           {spread != null && (
             <span className="ms-1 font-mono tabular-nums">
-              · spread {formatPrice(spread)}
+              · spread {(spread / 100).toFixed(2)}%
             </span>
           )}
         </span>
@@ -129,20 +136,24 @@ export function OrderBookDepth({
       ) : !data || (bids.length === 0 && asks.length === 0) ? (
         <EmptyState
           icon={ArrowsDownUp}
-          title="Empty book"
-          description="No resting orders for this outcome."
+          title="No liquidity levels"
+          description={
+            isOpen
+              ? "The market maker has no indicative depth for this outcome right now."
+              : "Depth is only published while the market is open."
+          }
           className="py-10"
         />
       ) : (
         <div className="grid grid-cols-2 gap-3">
           <Column
-            title="Bids"
+            title="Buy-back"
             levels={bids}
             maxQuantity={maxQuantity}
             tone="bid"
           />
           <Column
-            title="Asks"
+            title="Sell"
             levels={asks}
             maxQuantity={maxQuantity}
             tone="ask"

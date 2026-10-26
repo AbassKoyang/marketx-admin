@@ -56,6 +56,7 @@ type FormState = {
   closes_at: string;
   resolution_deadline: string;
   is_featured: boolean;
+  liquidity_b: string;
 };
 
 function formFromMarket(market: Market): FormState {
@@ -72,6 +73,7 @@ function formFromMarket(market: Market): FormState {
     closes_at: toLocalInput(market.closes_at),
     resolution_deadline: toLocalInput(market.resolution_deadline),
     is_featured: market.is_featured,
+    liquidity_b: String(market.liquidity_b),
   };
 }
 
@@ -157,9 +159,13 @@ function EditMarketForm({ market }: { market: Market }) {
   const [form, setForm] = useState<FormState>(() => formFromMarket(market));
   const [imageOpen, setImageOpen] = useState(false);
   const [newOutcome, setNewOutcome] = useState({ name: "", description: "" });
+  // Issued markets must be unlocked explicitly before depth can be changed,
+  // because every change reprices all outcomes immediately.
+  const [depthUnlocked, setDepthUnlocked] = useState(false);
 
   const isDraft = market.status === "draft";
   const canEdit = isDraft || market.status === "open";
+  const depthLocked = canEdit && market.issued_quantity > 0 && !depthUnlocked;
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -167,6 +173,12 @@ function EditMarketForm({ market }: { market: Market }) {
   const save = () => {
     if (!form.title.trim() || !form.question.trim() || !form.category_id) {
       toast.error("Title, question, and category are required.");
+      return;
+    }
+
+    const depth = Number(form.liquidity_b);
+    if (!form.liquidity_b.trim() || !Number.isInteger(depth) || depth < 1) {
+      toast.error("Liquidity depth must be a whole number of at least 1.");
       return;
     }
 
@@ -184,9 +196,13 @@ function EditMarketForm({ market }: { market: Market }) {
         closes_at: new Date(form.closes_at).toISOString(),
         resolution_deadline: new Date(form.resolution_deadline).toISOString(),
         is_featured: form.is_featured,
+        liquidity_b: depth,
       },
       {
-        onSuccess: () => toast.success("Market updated"),
+        onSuccess: () => {
+          toast.success("Market updated");
+          setDepthUnlocked(false);
+        },
         onError: (mutationError) =>
           toast.error(getApiErrorMessage(mutationError)),
       },
@@ -430,6 +446,74 @@ function EditMarketForm({ market }: { market: Market }) {
               Featured market
             </span>
           </Label>
+        </section>
+
+        <section className="flex flex-col gap-4 border border-border bg-card p-5">
+          <div>
+            <h2 className="text-sm font-medium">Market maker</h2>
+            <p className="text-[11px] text-muted-foreground">
+              LMSR pricing depth and issuance. Issuance counters are read-only.
+            </p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label>Issued sets</Label>
+              <div className="flex h-8 items-center border border-input px-2.5 font-mono text-xs tabular-nums">
+                {market.issued_quantity.toLocaleString()} /{" "}
+                {market.issuance_limit.toLocaleString()}
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Read-only. Each set is backed by 10,000 credits of collateral.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="liquidity-b">Liquidity depth (b)</Label>
+              <Input
+                id="liquidity-b"
+                type="number"
+                min={1}
+                step={1}
+                inputMode="numeric"
+                value={form.liquidity_b}
+                onChange={(event) =>
+                  update("liquidity_b", event.target.value)
+                }
+                disabled={depthLocked}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Higher depth absorbs larger orders with less price movement, at
+                a larger worst-case subsidy.
+              </p>
+            </div>
+          </div>
+
+          {market.issued_quantity > 0 && (
+            <div className="flex flex-col gap-2 border border-border bg-muted/40 p-3">
+              <p className="text-[11px] text-muted-foreground">
+                This market has issued{" "}
+                {market.issued_quantity.toLocaleString()} complete sets. Changing
+                depth reprices every outcome immediately and moves all holder
+                valuations.
+              </p>
+              <Label className="items-start gap-2 text-[11px]">
+                <input
+                  type="checkbox"
+                  checked={depthUnlocked}
+                  onChange={(event) => {
+                    setDepthUnlocked(event.target.checked);
+                    if (!event.target.checked) {
+                      update("liquidity_b", String(market.liquidity_b));
+                    }
+                  }}
+                  className="mt-0.5 size-3.5 accent-foreground"
+                  disabled={!canEdit}
+                />
+                I understand the repricing impact — unlock depth editing
+              </Label>
+            </div>
+          )}
         </section>
       </fieldset>
 

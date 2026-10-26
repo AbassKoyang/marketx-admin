@@ -5,7 +5,12 @@ import { motion } from "framer-motion";
 import { ArrowsLeftRight, MagnifyingGlass } from "@phosphor-icons/react";
 import { useAdminTrades } from "@/hooks/use-admin";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
-import { formatDateTime, formatProbability } from "@/lib/utils";
+import {
+  formatCredits,
+  formatDateTime,
+  formatTickProbability,
+  tradeNotional,
+} from "@/lib/utils";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TableSkeleton } from "@/components/shared/loading-skeleton";
@@ -37,7 +42,7 @@ export default function TradesPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Trades"
-        description="Every matched execution on the platform, including buyer and seller identities."
+        description="Every LMSR execution. One side is always the market maker, shown as its own account."
       />
 
       <div className="relative">
@@ -59,7 +64,7 @@ export default function TradesPage() {
 
       {isLoading ? (
         <div className="border border-border bg-card">
-          <TableSkeleton rows={8} cols={6} />
+          <TableSkeleton rows={8} cols={7} />
         </div>
       ) : isError ? (
         <div className="border border-border bg-card">
@@ -77,7 +82,7 @@ export default function TradesPage() {
             description={
               debouncedSearch
                 ? "No execution matches this search."
-                : "Executions appear here as soon as orders match."
+                : "Executions appear here as soon as orders hit the market maker."
             }
           />
         </div>
@@ -98,6 +103,7 @@ export default function TradesPage() {
                   <TableHead>Market</TableHead>
                   <TableHead className="text-end">Price</TableHead>
                   <TableHead className="text-end">Quantity</TableHead>
+                  <TableHead className="text-end">Notional</TableHead>
                   <TableHead className="pe-4 text-end">Executed</TableHead>
                 </TableRow>
               </TableHeader>
@@ -141,10 +147,13 @@ export default function TradesPage() {
                       </p>
                     </TableCell>
                     <TableCell className="text-end font-mono text-[11px] tabular-nums">
-                      {formatProbability(trade.price_decimal)}
+                      {formatTickProbability(trade.price)}
                     </TableCell>
                     <TableCell className="text-end font-mono text-[11px] tabular-nums">
                       {trade.quantity}
+                    </TableCell>
+                    <TableCell className="text-end font-mono text-[11px] tabular-nums">
+                      {formatCredits(tradeNotional(trade))}
                     </TableCell>
                     <TableCell className="pe-4 text-end text-[10px] text-muted-foreground tabular-nums">
                       {formatDateTime(trade.created_at)}
@@ -169,7 +178,7 @@ export default function TradesPage() {
                   </div>
                   <div className="shrink-0 text-end">
                     <p className="font-mono text-xs tabular-nums">
-                      {formatProbability(trade.price_decimal)}
+                      {formatTickProbability(trade.price)}
                     </p>
                     <p className="text-[10px] text-muted-foreground">
                       × {trade.quantity}
@@ -188,6 +197,7 @@ export default function TradesPage() {
                 </p>
 
                 <p className="font-mono text-[10px] text-muted-foreground">
+                  {formatCredits(tradeNotional(trade))} credits ·{" "}
                   {trade.execution_id.slice(0, 8)}… ·{" "}
                   {formatDateTime(trade.created_at)}
                 </p>

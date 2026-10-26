@@ -63,6 +63,8 @@ type AdminUserFilters = {
   is_staff?: boolean;
   is_active?: boolean;
   onboarded?: boolean;
+  /** true = liquidity account only, false = customers only. */
+  market_maker?: boolean;
 };
 
 export function useAdminUsers(filters: AdminUserFilters = {}) {
@@ -101,7 +103,7 @@ export function useAdminUserLedger(id: number, page = 1) {
 // ─── Wallets ─────────────────────────────────────────────────────────────────
 
 export function useAdminWallets(
-  params: { page?: number; search?: string } = {},
+  params: { page?: number; search?: string; market_maker?: boolean } = {},
 ) {
   return useQuery<PaginatedResponse<AdminWallet>>({
     queryKey: adminKeys.wallets(params),
@@ -121,6 +123,8 @@ type AdminOrderFilters = {
   status?: string;
   side?: string;
   user?: number;
+  /** true = market-maker/AMM orders only, false = customer orders only. */
+  market_maker?: boolean;
 };
 
 export function useAdminOrders(params: AdminOrderFilters = {}) {
@@ -150,8 +154,13 @@ export function useCancelAdminOrder() {
       qc.invalidateQueries({ queryKey: ["admin", "user"] });
       qc.invalidateQueries({ queryKey: ["orders"] });
       qc.invalidateQueries({ queryKey: ["wallet"] });
+      qc.invalidateQueries({ queryKey: ["wallet-ledger"] });
       qc.invalidateQueries({ queryKey: ["positions"] });
+      qc.invalidateQueries({ queryKey: ["positions-summary"] });
       qc.invalidateQueries({ queryKey: ["activity"] });
+      qc.invalidateQueries({ queryKey: ["market-stats"] });
+      qc.invalidateQueries({ queryKey: ["order-book"] });
+      qc.invalidateQueries({ queryKey: ["trades"] });
     },
   });
 }
@@ -163,6 +172,8 @@ type AdminPositionFilters = {
   search?: string;
   user?: number;
   settled?: boolean;
+  /** true = house inventory only, false = customer positions only. */
+  market_maker?: boolean;
 };
 
 export function useAdminPositions(params: AdminPositionFilters = {}) {
@@ -182,6 +193,8 @@ type AdminTradeFilters = {
   page?: number;
   search?: string;
   user?: number;
+  /** false returns only trades where neither party is the house account. */
+  market_maker?: boolean;
 };
 
 export function useAdminTrades(params: AdminTradeFilters = {}) {

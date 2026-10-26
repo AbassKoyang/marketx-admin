@@ -27,15 +27,16 @@ import {
   formatCredits,
   formatDate,
   formatDateTime,
-  formatProbability,
   formatSignedCredits,
+  formatTickProbability,
+  tradeNotional,
 } from "@/lib/utils";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TableSkeleton } from "@/components/shared/loading-skeleton";
 import { Pagination } from "@/components/shared/pagination";
 import { MetricCard } from "@/components/shared/metric-card";
-import { UserCell, userInitials } from "@/components/shared/user-cell";
+import { UserCell, userDisplayName, userInitials } from "@/components/shared/user-cell";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -68,6 +69,28 @@ const STATUS_LABEL: Record<OrderStatus, string> = {
 };
 
 type TabKey = "positions" | "orders" | "trades" | "ledger";
+
+function isMarketOrder(order: { side: string; limit_price: number }) {
+  return (
+    (order.side === "buy" && order.limit_price === 9_999) ||
+    (order.side === "sell" && order.limit_price === 1)
+  );
+}
+
+function positionStateLabel(position: {
+  settled_at: string | null;
+  market_status: string;
+}) {
+  if (position.settled_at) return "Settled";
+  if (position.market_status === "closed") return "Awaiting resolution";
+  if (position.market_status === "void") return "Void";
+  return "Open";
+}
+
+function pnl(units: number | null) {
+  if (units == null || units === 0) return "—";
+  return formatSignedCredits(units);
+}
 
 function PanelShell({
   children,
@@ -142,11 +165,10 @@ function PositionsPanel({ userId }: { userId: number }) {
           <TableHeader>
             <TableRow>
               <TableHead className="ps-4">Market</TableHead>
-              <TableHead className="text-end">Quantity</TableHead>
-              <TableHead className="text-end">Reserved</TableHead>
-              <TableHead className="text-end">Avg entry</TableHead>
-              <TableHead className="text-end">Cost basis</TableHead>
-              <TableHead className="text-end">Realized P&amp;L</TableHead>
+              <TableHead className="text-end">Qty</TableHead>
+              <TableHead className="text-end">Price</TableHead>
+              <TableHead className="text-end">Value / cost</TableHead>
+              <TableHead className="text-end">P&amp;L</TableHead>
               <TableHead>State</TableHead>
             </TableRow>
           </TableHeader>
@@ -174,29 +196,45 @@ function PositionsPanel({ userId }: { userId: number }) {
                 </TableCell>
                 <TableCell className="text-end font-mono text-[11px] tabular-nums">
                   {position.quantity}
-                </TableCell>
-                <TableCell className="text-end font-mono text-[11px] tabular-nums text-muted-foreground">
-                  {position.reserved_quantity}
-                </TableCell>
-                <TableCell className="text-end font-mono text-[11px] tabular-nums">
-                  {position.average_entry_price != null
-                    ? formatProbability(position.average_entry_price)
-                    : "—"}
+                  {position.reserved_quantity > 0 && (
+                    <p className="text-[9px] font-normal text-muted-foreground">
+                      {position.reserved_quantity} reserved
+                    </p>
+                  )}
                 </TableCell>
                 <TableCell className="text-end font-mono text-[11px] tabular-nums">
-                  {formatCredits(position.cost_basis)}
+                  {formatTickProbability(position.current_price)}
                 </TableCell>
                 <TableCell className="text-end font-mono text-[11px] tabular-nums">
-                  {position.realized_pnl === 0
+                  {position.settled_at || position.market_value == null
                     ? "—"
-                    : formatSignedCredits(position.realized_pnl)}
+                    : formatCredits(position.market_value)}
+                  {!position.settled_at && position.cost_basis > 0 && (
+                    <p className="text-[9px] font-normal text-muted-foreground">
+                      cost {formatCredits(position.cost_basis)}
+                    </p>
+                  )}
+                </TableCell>
+                <TableCell className="text-end font-mono text-[11px] tabular-nums">
+                  {position.settled_at
+                    ? pnl(position.realized_pnl)
+                    : pnl(position.unrealized_pnl)}
+                  {position.settled_at ? (
+                    <p className="text-[9px] font-normal text-muted-foreground">
+                      at settlement
+                    </p>
+                  ) : position.realized_pnl !== 0 ? (
+                    <p className="text-[9px] font-normal text-muted-foreground">
+                      realized {formatSignedCredits(position.realized_pnl)}
+                    </p>
+                  ) : null}
                 </TableCell>
                 <TableCell>
                   <Badge
                     variant={position.settled_at ? "secondary" : "outline"}
                     className="text-[9px] uppercase tracking-wider"
                   >
-                    {position.settled_at ? "Settled" : "Open"}
+                    {positionStateLabel(position)}
                   </Badge>
                 </TableCell>
               </motion.tr>
@@ -221,7 +259,7 @@ function PositionsPanel({ userId }: { userId: number }) {
                 variant={position.settled_at ? "secondary" : "outline"}
                 className="shrink-0 text-[9px] uppercase tracking-wider"
               >
-                {position.settled_at ? "Settled" : "Open"}
+                {positionStateLabel(position)}
               </Badge>
             </div>
             <div className="flex items-center justify-between gap-2 font-mono text-[11px] tabular-nums">
@@ -229,24 +267,26 @@ function PositionsPanel({ userId }: { userId: number }) {
                 {position.quantity}{" "}
                 <span className="font-sans text-muted-foreground">
                   contracts
+                  {position.reserved_quantity > 0
+                    ? ` · ${position.reserved_quantity} reserved`
+                    : ""}
                 </span>
               </span>
-              <span className="text-muted-foreground">
-                cost {formatCredits(position.cost_basis)}
-              </span>
+              <span>{formatTickProbability(position.current_price)}</span>
             </div>
-            <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
-              <span className="font-mono">
-                avg{" "}
-                {position.average_entry_price != null
-                  ? formatProbability(position.average_entry_price)
-                  : "—"}
-                {" · "}reserved {position.reserved_quantity}
+            <div className="flex items-center justify-between gap-2 font-mono text-[10px] tabular-nums text-muted-foreground">
+              <span>
+                {position.settled_at || position.market_value == null
+                  ? "—"
+                  : `${formatCredits(position.market_value)} value`}
+                {!position.settled_at && position.cost_basis > 0 && (
+                  <span> · cost {formatCredits(position.cost_basis)}</span>
+                )}
               </span>
-              <span className="font-mono">
-                {position.realized_pnl === 0
-                  ? ""
-                  : formatSignedCredits(position.realized_pnl)}
+              <span>
+                {position.settled_at
+                  ? `realized ${pnl(position.realized_pnl)}`
+                  : `unrealized ${pnl(position.unrealized_pnl)}`}
               </span>
             </div>
           </li>
@@ -298,7 +338,7 @@ function OrdersPanel({ userId }: { userId: number }) {
               <TableHead className="ps-4">Order</TableHead>
               <TableHead>Market</TableHead>
               <TableHead>Side</TableHead>
-              <TableHead className="text-end">Limit</TableHead>
+              <TableHead className="text-end">Slippage cap</TableHead>
               <TableHead className="text-end">Filled</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="pe-4 text-end">Placed</TableHead>
@@ -343,10 +383,17 @@ function OrdersPanel({ userId }: { userId: number }) {
                   </Badge>
                 </TableCell>
                 <TableCell className="text-end font-mono text-[11px] tabular-nums">
-                  {formatProbability(order.limit_price / 10_000)}
+                  {isMarketOrder(order)
+                    ? "Market"
+                    : formatTickProbability(order.limit_price)}
                 </TableCell>
                 <TableCell className="text-end font-mono text-[11px] tabular-nums">
                   {order.filled_quantity}/{order.original_quantity}
+                  {order.cancelled_at && order.remaining_quantity > 0 && (
+                    <p className="text-[9px] font-normal text-muted-foreground">
+                      {order.remaining_quantity} cancelled
+                    </p>
+                  )}
                 </TableCell>
                 <TableCell>
                   <Badge
@@ -355,6 +402,12 @@ function OrdersPanel({ userId }: { userId: number }) {
                   >
                     {STATUS_LABEL[order.status]}
                   </Badge>
+                  {order.status === "partially_filled" &&
+                    order.cancelled_at && (
+                      <p className="mt-0.5 text-[9px] text-muted-foreground">
+                        remainder closed
+                      </p>
+                    )}
                 </TableCell>
                 <TableCell className="pe-4 text-end text-[10px] text-muted-foreground tabular-nums">
                   {formatDateTime(order.created_at)}
@@ -392,12 +445,21 @@ function OrdersPanel({ userId }: { userId: number }) {
                 >
                   {order.side}
                 </Badge>
-                {formatProbability(order.limit_price / 10_000)}
+                {isMarketOrder(order)
+                  ? "Market"
+                  : formatTickProbability(order.limit_price)}
               </span>
               <span className="text-muted-foreground">
                 {order.filled_quantity}/{order.original_quantity} filled
               </span>
             </div>
+            {order.cancelled_at && order.remaining_quantity > 0 && (
+              <p className="text-[10px] text-muted-foreground">
+                {order.remaining_quantity} contract
+                {order.remaining_quantity === 1 ? "" : "s"} cancelled with the
+                remainder.
+              </p>
+            )}
             <p className="font-mono text-[10px] text-muted-foreground">
               #{order.id} · {formatDateTime(order.created_at)}
             </p>
@@ -453,6 +515,7 @@ function TradesPanel({ userId }: { userId: number }) {
               <TableHead>Counterparty</TableHead>
               <TableHead className="text-end">Price</TableHead>
               <TableHead className="text-end">Quantity</TableHead>
+              <TableHead className="text-end">Notional</TableHead>
               <TableHead className="pe-4 text-end">Executed</TableHead>
             </TableRow>
           </TableHeader>
@@ -500,10 +563,13 @@ function TradesPanel({ userId }: { userId: number }) {
                     />
                   </TableCell>
                   <TableCell className="text-end font-mono text-[11px] tabular-nums">
-                    {formatProbability(trade.price_decimal)}
+                    {formatTickProbability(trade.price)}
                   </TableCell>
                   <TableCell className="text-end font-mono text-[11px] tabular-nums">
                     {trade.quantity}
+                  </TableCell>
+                  <TableCell className="text-end font-mono text-[11px] tabular-nums">
+                    {formatCredits(tradeNotional(trade))}
                   </TableCell>
                   <TableCell className="pe-4 text-end text-[10px] text-muted-foreground tabular-nums">
                     {formatDateTime(trade.created_at)}
@@ -538,11 +604,15 @@ function TradesPanel({ userId }: { userId: number }) {
                 </Badge>
               </div>
               <div className="flex items-center justify-between gap-2 font-mono text-[11px] tabular-nums">
-                <span>{formatProbability(trade.price_decimal)}</span>
+                <span>{formatTickProbability(trade.price)}</span>
                 <span className="text-muted-foreground">× {trade.quantity}</span>
               </div>
+              <div className="flex items-center justify-between gap-2 font-mono text-[10px] tabular-nums text-muted-foreground">
+                <span>with {userDisplayName(counterparty)}</span>
+                <span>{formatCredits(tradeNotional(trade))} credits</span>
+              </div>
               <p className="font-mono text-[10px] text-muted-foreground">
-                with {counterparty.email} · {formatDateTime(trade.created_at)}
+                {formatDateTime(trade.created_at)}
               </p>
             </li>
           );
@@ -780,17 +850,36 @@ export default function UserDetailPage() {
               {displayName}
             </h2>
             <Badge
-              variant={user.is_staff ? "default" : "outline"}
+              variant={
+                user.is_market_maker
+                  ? "secondary"
+                  : user.is_staff
+                    ? "default"
+                    : "outline"
+              }
               className="text-[9px] uppercase tracking-wider"
             >
-              {user.is_staff ? "Staff" : "Customer"}
+              {user.is_market_maker
+                ? "Market maker"
+                : user.is_staff
+                  ? "Staff"
+                  : "Customer"}
             </Badge>
-            <Badge
-              variant={user.is_active ? "secondary" : "outline"}
-              className="text-[9px] uppercase tracking-wider"
-            >
-              {user.is_active ? "Active" : "Inactive"}
-            </Badge>
+            {user.is_market_maker ? (
+              <Badge
+                variant="outline"
+                className="border-dashed text-[9px] uppercase tracking-wider text-muted-foreground"
+              >
+                System account
+              </Badge>
+            ) : (
+              <Badge
+                variant={user.is_active ? "secondary" : "outline"}
+                className="text-[9px] uppercase tracking-wider"
+              >
+                {user.is_active ? "Active" : "Inactive"}
+              </Badge>
+            )}
             {user.is_verified && (
               <Badge
                 variant="outline"
@@ -815,6 +904,12 @@ export default function UserDetailPage() {
               @{user.username}
             </p>
           )}
+          {user.is_market_maker && (
+            <p className="text-[10px] text-muted-foreground">
+              Platform liquidity account. Holds AMM inventory and cannot sign
+              in.
+            </p>
+          )}
 
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-muted-foreground">
             <span>Joined {formatDate(user.created_at)}</span>
@@ -835,14 +930,22 @@ export default function UserDetailPage() {
         <MetricCard
           label="Available"
           value={formatCredits(user.wallet.available_balance)}
-          sub="Spendable simulated credits"
+          sub={
+            user.is_market_maker
+              ? "AMM operating credits"
+              : "Spendable simulated credits"
+          }
           icon={Coins}
           index={0}
         />
         <MetricCard
           label="Reserved"
           value={formatCredits(user.wallet.reserved_balance)}
-          sub="Held against open buy orders"
+          sub={
+            user.is_market_maker
+              ? "Issuance collateral"
+              : "Held against legacy resting buys"
+          }
           icon={Lock}
           index={1}
         />
@@ -856,7 +959,9 @@ export default function UserDetailPage() {
         <MetricCard
           label="Realized P&L"
           value={formatSignedCredits(user.realized_pnl)}
-          sub="Across settled positions"
+          sub={
+            user.is_market_maker ? "AMM trading gains" : "Across settled positions"
+          }
           icon={TrendUp}
           index={3}
         />

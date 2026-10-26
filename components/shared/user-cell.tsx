@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import type { AdminUserCompact } from "@/lib/types";
 
 export function userDisplayName(user: AdminUserCompact): string {
+  if (user.is_market_maker) return "Market Maker";
   const full = [user.first_name, user.last_name]
     .filter(Boolean)
     .join(" ")
@@ -44,13 +45,15 @@ export function UserCell({
           {userDisplayName(user)}
         </p>
         <p className="truncate text-[10px] text-muted-foreground">
-          {user.email}
+          {user.is_market_maker
+            ? `Liquidity · ${user.email}`
+            : user.email}
         </p>
       </div>
     </div>
   );
 
-  if (!href) return body;
+  if (!href || user.is_market_maker) return body;
 
   return (
     <Link href={href} className="block min-w-0">

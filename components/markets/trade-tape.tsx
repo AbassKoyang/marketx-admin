@@ -5,7 +5,12 @@ import { ArrowsLeftRight } from "@phosphor-icons/react";
 import { useTrades } from "@/hooks/use-trading";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatProbability, formatRelativeTime } from "@/lib/utils";
+import {
+  formatCredits,
+  formatRelativeTime,
+  formatTickProbability,
+  tradeNotional,
+} from "@/lib/utils";
 
 export function TradeTape({ outcomeId }: { outcomeId?: number }) {
   const { data, isLoading } = useTrades(
@@ -46,15 +51,18 @@ export function TradeTape({ outcomeId }: { outcomeId?: number }) {
               key={trade.id}
               className="flex items-center justify-between gap-3 px-0.5 py-2 text-[11px] transition-colors hover:bg-muted/40"
             >
-              <div className="flex items-center gap-2">
+              <div className="flex min-w-0 items-center gap-2">
                 <span className="font-mono tabular-nums text-foreground">
-                  {formatProbability(trade.price_decimal)}
+                  {formatTickProbability(trade.price)}
                 </span>
                 <span className="text-muted-foreground">
                   × {trade.quantity}
                 </span>
+                <span className="truncate font-mono text-[10px] tabular-nums text-muted-foreground">
+                  · {formatCredits(tradeNotional(trade))} credits
+                </span>
               </div>
-              <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+              <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
                 {formatRelativeTime(trade.created_at)}
               </span>
             </div>

@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { useAdminOrders, useCancelAdminOrder } from "@/hooks/use-admin";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { getApiErrorMessage } from "@/lib/api";
-import { formatDateTime, formatProbability } from "@/lib/utils";
+import { formatDateTime, formatTickProbability } from "@/lib/utils";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TableSkeleton } from "@/components/shared/loading-skeleton";
@@ -53,6 +53,25 @@ const STATUS_LABEL: Record<OrderStatus, string> = {
   cancelled: "Cancelled",
 };
 
+const ACCOUNT_OPTIONS = [
+  { value: "customers", label: "Customers" },
+  { value: "market_maker", label: "Market maker" },
+  { value: "all", label: "All accounts" },
+];
+
+function isMarketOrder(order: AdminOrder) {
+  return (
+    (order.side === "buy" && order.limit_price === 9_999) ||
+    (order.side === "sell" && order.limit_price === 1)
+  );
+}
+
+function canCancelOrder(order: AdminOrder) {
+  if (order.is_market_maker_order) return false;
+  if (order.cancelled_at) return false;
+  return order.status === "open" || order.status === "partially_filled";
+}
+
 const STATUS_OPTIONS = [
   { value: "all", label: "All statuses" },
   { value: "open", label: "Open" },
@@ -72,6 +91,7 @@ export default function OrdersPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [side, setSide] = useState("all");
+  const [account, setAccount] = useState("customers");
   const [cancelling, setCancelling] = useState<AdminOrder | null>(null);
   const debouncedSearch = useDebouncedValue(search, 350);
 
@@ -80,6 +100,12 @@ export default function OrdersPage() {
     search: debouncedSearch,
     status: status === "all" ? "" : status,
     side: side === "all" ? "" : side,
+    market_maker:
+      account === "market_maker"
+        ? true
+        : account === "customers"
+          ? false
+          : undefined,
   });
   const cancelOrder = useCancelAdminOrder();
 
@@ -89,7 +115,7 @@ export default function OrdersPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Orders"
-        description="Every order on the platform. Cancel open orders to release reserved credits or contracts."
+        description="Customer orders on the LMSR market maker. New orders execute immediately; only legacy resting orders can be cancelled."
       />
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
@@ -157,6 +183,30 @@ export default function OrdersPage() {
             </SelectContent>
           </Select>
         </div>
+
+        <div className="flex flex-col gap-1.5 sm:w-44">
+          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            Account
+          </Label>
+          <Select
+            value={account}
+            onValueChange={(value) => {
+              setAccount(String(value ?? "customers"));
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ACCOUNT_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {isLoading ? (
@@ -177,9 +227,12 @@ export default function OrdersPage() {
             icon={ListChecks}
             title="No orders"
             description={
-              debouncedSearch || status !== "all" || side !== "all"
+              debouncedSearch ||
+              status !== "all" ||
+              side !== "all" ||
+              account !== "customers"
                 ? "No orders match these filters."
-                : "Orders will appear here as soon as users place them."
+                : "Customer orders will appear here as soon as they are placed."
             }
           />
         </div>
@@ -197,7 +250,7 @@ export default function OrdersPage() {
                   <TableHead className="ps-4">User</TableHead>
                   <TableHead>Market</TableHead>
                   <TableHead>Side</TableHead>
-                  <TableHead className="text-end">Limit</TableHead>
+                  <TableHead className="text-end">Slippage cap</TableHead>
                   <TableHead className="text-end">Filled</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-end">Placed</TableHead>
@@ -219,11 +272,21 @@ export default function OrdersPage() {
                     className="border-b transition-colors hover:bg-muted/40"
                   >
                     <TableCell className="ps-4">
-                      <UserCell
-                        user={order.user}
-                        href={`/users/${order.user.id}`}
-                        className="min-w-40"
-                      />
+                      <div className="flex flex-col gap-1">
+                        <UserCell
+                          user={order.user}
+                          href={`/users/${order.user.id}`}
+                          className="min-w-40"
+                        />
+                        {order.is_market_maker_order && (
+                          <Badge
+                            variant="outline"
+                            className="w-fit text-[9px] uppercase tracking-wider"
+                          >
+                            Market maker
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <p className="max-w-56 truncate text-[11px] font-medium">
@@ -242,10 +305,17 @@ export default function OrdersPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-end font-mono text-[11px] tabular-nums">
-                      {formatProbability(order.limit_price / 10_000)}
+                      {isMarketOrder(order)
+                        ? "Market"
+                        : formatTickProbability(order.limit_price)}
                     </TableCell>
                     <TableCell className="text-end font-mono text-[11px] tabular-nums">
                       {order.filled_quantity}/{order.original_quantity}
+                      {order.cancelled_at && order.remaining_quantity > 0 && (
+                        <p className="text-[9px] font-normal text-muted-foreground">
+                          {order.remaining_quantity} cancelled
+                        </p>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -254,13 +324,18 @@ export default function OrdersPage() {
                       >
                         {STATUS_LABEL[order.status]}
                       </Badge>
+                      {order.status === "partially_filled" &&
+                        order.cancelled_at && (
+                          <p className="mt-0.5 text-[9px] text-muted-foreground">
+                            remainder closed
+                          </p>
+                        )}
                     </TableCell>
                     <TableCell className="text-end text-[10px] text-muted-foreground tabular-nums">
                       {formatDateTime(order.created_at)}
                     </TableCell>
                     <TableCell className="pe-4">
-                      {(order.status === "open" ||
-                        order.status === "partially_filled") && (
+                      {canCancelOrder(order) && (
                         <Button
                           variant="ghost"
                           size="icon-xs"
@@ -281,11 +356,21 @@ export default function OrdersPage() {
             {orders.map((order) => (
               <li key={order.id} className="flex flex-col gap-2 p-4">
                 <div className="flex items-start justify-between gap-2">
-                  <UserCell
-                    user={order.user}
-                    href={`/users/${order.user.id}`}
-                    className="min-w-0"
-                  />
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <UserCell
+                      user={order.user}
+                      href={`/users/${order.user.id}`}
+                      className="min-w-0"
+                    />
+                    {order.is_market_maker_order && (
+                      <Badge
+                        variant="outline"
+                        className="w-fit text-[9px] uppercase tracking-wider"
+                      >
+                        Market maker
+                      </Badge>
+                    )}
+                  </div>
                   <Badge
                     variant={STATUS_VARIANT[order.status]}
                     className="shrink-0 text-[9px] uppercase tracking-wider"
@@ -311,14 +396,15 @@ export default function OrdersPage() {
                     >
                       {order.side}
                     </Badge>
-                    {formatProbability(order.limit_price / 10_000)}
+                    {isMarketOrder(order)
+                      ? "Market"
+                      : formatTickProbability(order.limit_price)}
                     <span className="text-muted-foreground">
                       · {order.filled_quantity}/{order.original_quantity}
                     </span>
                   </div>
 
-                  {(order.status === "open" ||
-                    order.status === "partially_filled") && (
+                  {canCancelOrder(order) && (
                     <Button
                       variant="ghost"
                       size="xs"
@@ -328,6 +414,14 @@ export default function OrdersPage() {
                     </Button>
                   )}
                 </div>
+
+                {order.cancelled_at && order.remaining_quantity > 0 && (
+                  <p className="text-[10px] text-muted-foreground">
+                    {order.remaining_quantity} contract
+                    {order.remaining_quantity === 1 ? "" : "s"} cancelled with the
+                    remainder.
+                  </p>
+                )}
 
                 <p className="font-mono text-[10px] text-muted-foreground">
                   #{order.id} · {formatDateTime(order.created_at)}
@@ -358,8 +452,8 @@ export default function OrdersPage() {
         onOpenChange={(open) => {
           if (!open) setCancelling(null);
         }}
-        title={`Cancel order #${cancelling?.id ?? ""}?`}
-        description="Cancelling releases any reserved credits or position quantity. This cannot be undone."
+        title={`Cancel legacy order #${cancelling?.id ?? ""}?`}
+        description="Only legacy resting orders can be cancelled. New orders execute immediately, and market-maker orders are never cancellable."
         confirmLabel="Cancel order"
         cancelLabel="Keep order"
         destructive

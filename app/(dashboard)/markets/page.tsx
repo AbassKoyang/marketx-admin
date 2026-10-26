@@ -46,8 +46,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatDate } from "@/lib/utils";
-import type { MarketStatus, MarketType } from "@/lib/types";
+import { formatDate, formatTickProbability } from "@/lib/utils";
+import type { Market, MarketStatus, MarketType } from "@/lib/types";
 
 const STATUS_OPTIONS: Array<{ value: MarketStatus | "all"; label: string }> = [
   { value: "all", label: "All statuses" },
@@ -67,8 +67,20 @@ const TYPE_OPTIONS: Array<{ value: MarketType | "all"; label: string }> = [
 function MarketsSkeleton() {
   return (
     <div className="border border-border bg-card">
-      <TableSkeleton rows={8} cols={5} />
+      <TableSkeleton rows={8} cols={6} />
     </div>
+  );
+}
+
+/**
+ * Highest-probability outcome in the current LMSR vector. Prices always sum to
+ * 100%, so this is the market's leading contract rather than a last trade.
+ */
+function leadingPrice(market: Market) {
+  const prices = market.current_prices ?? [];
+  if (prices.length === 0) return null;
+  return prices.reduce((best, price) =>
+    price.price > best.price ? price : best,
   );
 }
 
@@ -386,6 +398,7 @@ function MarketsContent() {
                     <TableHead>Type</TableHead>
                     <TableHead>Category</TableHead>
                     <TableHead className="text-end">Outcomes</TableHead>
+                    <TableHead className="text-end">Leading</TableHead>
                     <TableHead>Closes</TableHead>
                     <TableHead className="w-10 pe-4">
                       <span className="sr-only">Open</span>
@@ -393,19 +406,21 @@ function MarketsContent() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {markets.map((market, index) => (
-                    <motion.tr
-                      key={market.id}
-                      initial={{ opacity: 0, y: 4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{
-                        type: "spring",
-                        duration: 0.3,
-                        bounce: 0,
-                        delay: Math.min(index * 0.025, 0.2),
-                      }}
-                      className="border-b transition-colors hover:bg-muted/40"
-                    >
+                  {markets.map((market, index) => {
+                    const lead = leadingPrice(market);
+                    return (
+                      <motion.tr
+                        key={market.id}
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{
+                          type: "spring",
+                          duration: 0.3,
+                          bounce: 0,
+                          delay: Math.min(index * 0.025, 0.2),
+                        }}
+                        className="border-b transition-colors hover:bg-muted/40"
+                      >
                       <TableCell className="max-w-[380px] ps-4 align-top whitespace-normal">
                         <Link
                           href={`/markets/${market.slug}`}
@@ -437,6 +452,18 @@ function MarketsContent() {
                       <TableCell className="text-end font-mono text-[11px] tabular-nums">
                         {market.outcomes?.length ?? 0}
                       </TableCell>
+                      <TableCell className="text-end font-mono text-[11px] tabular-nums">
+                        {lead ? (
+                          <div className="flex flex-col items-end">
+                            <span>{formatTickProbability(lead.price)}</span>
+                            <span className="max-w-24 truncate text-[9px] font-normal text-muted-foreground">
+                              {lead.name}
+                            </span>
+                          </div>
+                        ) : (
+                          "—"
+                        )}
+                      </TableCell>
                       <TableCell className="text-[11px] text-muted-foreground tabular-nums">
                         {market.closes_at ? formatDate(market.closes_at) : "—"}
                       </TableCell>
@@ -451,54 +478,63 @@ function MarketsContent() {
                         </Button>
                       </TableCell>
                     </motion.tr>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
 
             {/* Mobile list */}
             <ul className="divide-y divide-border md:hidden">
-              {markets.map((market) => (
-                <li key={market.id}>
-                  <Link
-                    href={`/markets/${market.slug}`}
-                    className="flex items-start gap-3 p-4 transition-colors active:bg-muted/50"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <p className="line-clamp-2 text-sm font-medium">{market.title}</p>
-                        {market.is_featured && (
-                          <Star
-                            size={12}
-                            weight="fill"
-                            className="shrink-0 text-muted-foreground"
-                          />
-                        )}
+              {markets.map((market) => {
+                const lead = leadingPrice(market);
+                return (
+                  <li key={market.id}>
+                    <Link
+                      href={`/markets/${market.slug}`}
+                      className="flex items-start gap-3 p-4 transition-colors active:bg-muted/50"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <p className="line-clamp-2 text-sm font-medium">{market.title}</p>
+                          {market.is_featured && (
+                            <Star
+                              size={12}
+                              weight="fill"
+                              className="shrink-0 text-muted-foreground"
+                            />
+                          )}
+                        </div>
+                        <p className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground">
+                          {market.category?.name ?? "Uncategorised"} · Closes{" "}
+                          {market.closes_at ? formatDate(market.closes_at) : "—"}
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <MarketStatusBadge status={market.status} />
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] uppercase tracking-wider"
+                          >
+                            {market.market_type === "binary" ? "Binary" : "Multi"}
+                          </Badge>
+                          {lead && (
+                            <span className="truncate text-[11px] tabular-nums text-foreground">
+                              {lead.name} {formatTickProbability(lead.price)}
+                            </span>
+                          )}
+                          <span className="text-[11px] text-muted-foreground">
+                            {market.outcomes?.length ?? 0} outcomes
+                          </span>
+                        </div>
                       </div>
-                      <p className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground">
-                        {market.category?.name ?? "Uncategorised"} · Closes{" "}
-                        {market.closes_at ? formatDate(market.closes_at) : "—"}
-                      </p>
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                        <MarketStatusBadge status={market.status} />
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] uppercase tracking-wider"
-                        >
-                          {market.market_type === "binary" ? "Binary" : "Multi"}
-                        </Badge>
-                        <span className="text-[11px] text-muted-foreground">
-                          {market.outcomes?.length ?? 0} outcomes
-                        </span>
-                      </div>
-                    </div>
-                    <ArrowRight
-                      size={14}
-                      className="mt-1 shrink-0 text-muted-foreground"
-                    />
-                  </Link>
-                </li>
-              ))}
+                      <ArrowRight
+                        size={14}
+                        className="mt-1 shrink-0 text-muted-foreground"
+                      />
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
 
             <Pagination

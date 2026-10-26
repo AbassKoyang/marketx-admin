@@ -13,8 +13,8 @@ import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import {
   formatCredits,
   formatDateTime,
-  formatProbability,
   formatSignedCredits,
+  formatTickProbability,
 } from "@/lib/utils";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -40,6 +40,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import type { AdminPosition } from "@/lib/types";
 
 const STATE_OPTIONS = [
   { value: "all", label: "All positions" },
@@ -47,10 +48,29 @@ const STATE_OPTIONS = [
   { value: "settled", label: "Settled" },
 ];
 
+const ACCOUNT_OPTIONS = [
+  { value: "customers", label: "Customers" },
+  { value: "market_maker", label: "Market maker" },
+  { value: "all", label: "All accounts" },
+];
+
+function positionStateLabel(position: AdminPosition) {
+  if (position.settled_at) return "Settled";
+  if (position.market_status === "closed") return "Awaiting resolution";
+  if (position.market_status === "void") return "Void";
+  return "Open";
+}
+
+function formatPnl(units: number | null) {
+  if (units == null || units === 0) return "—";
+  return formatSignedCredits(units);
+}
+
 export default function PositionsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [state, setState] = useState("all");
+  const [account, setAccount] = useState("customers");
   const debouncedSearch = useDebouncedValue(search, 350);
 
   const { data: overview } = useAdminOverview();
@@ -59,6 +79,12 @@ export default function PositionsPage() {
     search: debouncedSearch,
     settled:
       state === "settled" ? true : state === "open" ? false : undefined,
+    market_maker:
+      account === "market_maker"
+        ? true
+        : account === "customers"
+          ? false
+          : undefined,
   });
 
   const positions = data?.results ?? [];
@@ -67,28 +93,28 @@ export default function PositionsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Positions"
-        description="Every open and settled contract held by any account on the platform."
+        description="Customer contracts held with the LMSR market maker, valued at the current price vector. Market-maker inventory lives on its own account."
       />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <MetricCard
           label="Open positions"
           value={overview?.trading.open_positions.toLocaleString() ?? "—"}
-          sub="Unsettled contracts platform-wide"
+          sub="Customer positions awaiting settlement"
           icon={Briefcase}
           index={0}
         />
         <MetricCard
-          label="Accounts"
+          label="Customer accounts"
           value={overview?.users.total.toLocaleString() ?? "—"}
-          sub="Users holding or trading"
+          sub="Excludes the liquidity account"
           icon={Users}
           index={1}
         />
         <MetricCard
           label="Total trades"
           value={overview?.trading.trades.toLocaleString() ?? "—"}
-          sub="Matched executions"
+          sub="Executions incl. market maker"
           icon={ArrowsLeftRight}
           index={2}
         />
@@ -135,11 +161,35 @@ export default function PositionsPage() {
             </SelectContent>
           </Select>
         </div>
+
+        <div className="flex flex-col gap-1.5 sm:w-44">
+          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            Account
+          </Label>
+          <Select
+            value={account}
+            onValueChange={(value) => {
+              setAccount(String(value ?? "customers"));
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ACCOUNT_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {isLoading ? (
         <div className="border border-border bg-card">
-          <TableSkeleton rows={8} cols={6} />
+          <TableSkeleton rows={8} cols={8} />
         </div>
       ) : isError ? (
         <div className="border border-border bg-card">
@@ -155,9 +205,9 @@ export default function PositionsPage() {
             icon={Briefcase}
             title="No positions"
             description={
-              debouncedSearch || state !== "all"
+              debouncedSearch || state !== "all" || account !== "customers"
                 ? "No positions match these filters."
-                : "Buys and sells that leave accounts holding contracts will appear here."
+                : "Contracts bought from the market maker will appear here."
             }
           />
         </div>
@@ -174,11 +224,10 @@ export default function PositionsPage() {
                 <TableRow>
                   <TableHead className="ps-4">User</TableHead>
                   <TableHead>Market</TableHead>
-                  <TableHead className="text-end">Quantity</TableHead>
-                  <TableHead className="text-end">Reserved</TableHead>
-                  <TableHead className="text-end">Avg entry</TableHead>
-                  <TableHead className="text-end">Cost basis</TableHead>
-                  <TableHead className="text-end">Realized P&amp;L</TableHead>
+                  <TableHead className="text-end">Qty</TableHead>
+                  <TableHead className="text-end">Price</TableHead>
+                  <TableHead className="text-end">Value / cost</TableHead>
+                  <TableHead className="text-end">P&amp;L</TableHead>
                   <TableHead>State</TableHead>
                   <TableHead className="pe-4 text-end">Updated</TableHead>
                 </TableRow>
@@ -214,29 +263,45 @@ export default function PositionsPage() {
                     </TableCell>
                     <TableCell className="text-end font-mono text-[11px] tabular-nums">
                       {position.quantity}
-                    </TableCell>
-                    <TableCell className="text-end font-mono text-[11px] tabular-nums text-muted-foreground">
-                      {position.reserved_quantity}
-                    </TableCell>
-                    <TableCell className="text-end font-mono text-[11px] tabular-nums">
-                      {position.average_entry_price != null
-                        ? formatProbability(position.average_entry_price)
-                        : "—"}
+                      {position.reserved_quantity > 0 && (
+                        <p className="text-[9px] font-normal text-muted-foreground">
+                          {position.reserved_quantity} reserved
+                        </p>
+                      )}
                     </TableCell>
                     <TableCell className="text-end font-mono text-[11px] tabular-nums">
-                      {formatCredits(position.cost_basis)}
+                      {formatTickProbability(position.current_price)}
                     </TableCell>
                     <TableCell className="text-end font-mono text-[11px] tabular-nums">
-                      {position.realized_pnl === 0
+                      {position.settled_at || position.market_value == null
                         ? "—"
-                        : formatSignedCredits(position.realized_pnl)}
+                        : formatCredits(position.market_value)}
+                      {!position.settled_at && position.cost_basis > 0 && (
+                        <p className="text-[9px] font-normal text-muted-foreground">
+                          cost {formatCredits(position.cost_basis)}
+                        </p>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-end font-mono text-[11px] tabular-nums">
+                      {position.settled_at
+                        ? formatPnl(position.realized_pnl)
+                        : formatPnl(position.unrealized_pnl)}
+                      {position.settled_at ? (
+                        <p className="text-[9px] font-normal text-muted-foreground">
+                          at settlement
+                        </p>
+                      ) : position.realized_pnl !== 0 ? (
+                        <p className="text-[9px] font-normal text-muted-foreground">
+                          realized {formatSignedCredits(position.realized_pnl)}
+                        </p>
+                      ) : null}
                     </TableCell>
                     <TableCell>
                       <Badge
                         variant={position.settled_at ? "secondary" : "outline"}
                         className="text-[9px] uppercase tracking-wider"
                       >
-                        {position.settled_at ? "Settled" : "Open"}
+                        {positionStateLabel(position)}
                       </Badge>
                     </TableCell>
                     <TableCell className="pe-4 text-end text-[10px] text-muted-foreground tabular-nums">
@@ -261,7 +326,7 @@ export default function PositionsPage() {
                     variant={position.settled_at ? "secondary" : "outline"}
                     className="shrink-0 text-[9px] uppercase tracking-wider"
                   >
-                    {position.settled_at ? "Settled" : "Open"}
+                    {positionStateLabel(position)}
                   </Badge>
                 </div>
 
@@ -279,25 +344,27 @@ export default function PositionsPage() {
                     {position.quantity}{" "}
                     <span className="font-sans text-muted-foreground">
                       contracts
+                      {position.reserved_quantity > 0
+                        ? ` · ${position.reserved_quantity} reserved`
+                        : ""}
                     </span>
                   </span>
-                  <span className="text-muted-foreground">
-                    cost {formatCredits(position.cost_basis)}
-                  </span>
+                  <span>{formatTickProbability(position.current_price)}</span>
                 </div>
 
-                <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
-                  <span className="font-mono">
-                    avg{" "}
-                    {position.average_entry_price != null
-                      ? formatProbability(position.average_entry_price)
-                      : "—"}
-                    {" · "}reserved {position.reserved_quantity}
+                <div className="flex items-center justify-between gap-2 font-mono text-[10px] tabular-nums text-muted-foreground">
+                  <span>
+                    {position.settled_at || position.market_value == null
+                      ? "—"
+                      : `${formatCredits(position.market_value)} value`}
+                    {!position.settled_at && position.cost_basis > 0 && (
+                      <span> · cost {formatCredits(position.cost_basis)}</span>
+                    )}
                   </span>
-                  <span className="font-mono">
-                    {position.realized_pnl === 0
-                      ? ""
-                      : formatSignedCredits(position.realized_pnl)}
+                  <span>
+                    {position.settled_at
+                      ? `realized ${formatPnl(position.realized_pnl)}`
+                      : `unrealized ${formatPnl(position.unrealized_pnl)}`}
                   </span>
                 </div>
               </li>

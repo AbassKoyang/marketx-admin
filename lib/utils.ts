@@ -2,7 +2,9 @@ export { cn } from "cn";
 
 // ─── Credit Formatting ────────────────────────────────────────────────────────
 
-const CREDIT_SCALE = 10_000;
+export const CREDIT_SCALE = 10_000;
+export const MIN_PRICE = 1;
+export const MAX_PRICE = 9_999;
 
 /** Format integer credit units → "1.23" display credits */
 export function formatCredits(units: number): string {
@@ -12,7 +14,7 @@ export function formatCredits(units: number): string {
   });
 }
 
-/** Format integer price tick (1–9999) → "0.42" */
+/** Format integer price tick (0–10000) → "0.42" */
 export function formatPrice(tick: number): string {
   return (tick / CREDIT_SCALE).toLocaleString(undefined, {
     minimumFractionDigits: 2,
@@ -25,10 +27,28 @@ export function formatProbability(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+/** Format an integer LMSR tick (0–10000) as "42.0%" */
+export function formatTickProbability(tick: number | null | undefined): string {
+  if (tick == null) return "—";
+  return `${(tick / 100).toFixed(1)}%`;
+}
+
 /** Format a signed credit delta, e.g. "+1.20" / "−0.50" */
 export function formatSignedCredits(units: number): string {
   const formatted = formatCredits(Math.abs(units));
   return `${units < 0 ? "−" : "+"}${formatted}`;
+}
+
+/**
+ * Exact trade cash. Legacy rows predate `notional` and store 0, so fall back
+ * to the rounded price × quantity only in that case.
+ */
+export function tradeNotional(trade: {
+  notional: number;
+  price: number;
+  quantity: number;
+}): number {
+  return trade.notional === 0 ? trade.price * trade.quantity : trade.notional;
 }
 
 /** Turn a display name into a URL-safe slug */

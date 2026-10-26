@@ -133,14 +133,27 @@ export default apiClient;
 
 // ─── Error Message Helper ─────────────────────────────────────────────────────
 
+function messageFromValue(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    const messages = value.filter((item) => typeof item === "string");
+    if (messages.length > 0) return messages.join(" ");
+  }
+  return null;
+}
+
 export function getApiErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
-    const detail = error.body.detail;
-    if (typeof detail === "string") return detail;
+    // Service errors use `detail` as a list; field errors use arrays too.
+    const detail = messageFromValue(error.body.detail);
+    if (detail) return detail;
+
+    const nonField = messageFromValue(error.body.non_field_errors);
+    if (nonField) return nonField;
 
     for (const value of Object.values(error.body)) {
-      if (Array.isArray(value) && value.length > 0) return String(value[0]);
-      if (typeof value === "string") return value;
+      const message = messageFromValue(value);
+      if (message) return message;
     }
 
     if (error.status === 403) {
@@ -155,4 +168,20 @@ export function getApiErrorMessage(error: unknown): string {
   }
 
   return "Something went wrong. Please try again.";
+}
+
+/**
+ * Per-field DRF validation messages, ready to merge into form error state.
+ * Service-level errors (`detail`, `non_field_errors`) are left for the toast.
+ */
+export function getApiFieldErrors(error: unknown): Record<string, string> {
+  if (!(error instanceof ApiError)) return {};
+
+  const errors: Record<string, string> = {};
+  for (const [field, value] of Object.entries(error.body)) {
+    if (field === "detail" || field === "non_field_errors") continue;
+    const message = messageFromValue(value);
+    if (message) errors[field] = message;
+  }
+  return errors;
 }
