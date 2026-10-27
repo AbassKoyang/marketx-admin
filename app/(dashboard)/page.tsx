@@ -35,7 +35,7 @@ export default function DashboardOverviewPage() {
     {
       label: "Customer wallets",
       value: overview?.wallets.total.toLocaleString() ?? "—",
-      sub: "Excludes the liquidity account",
+      sub: "All customer wallets",
       icon: Wallet,
       href: "/wallet",
     },
@@ -125,7 +125,7 @@ export default function DashboardOverviewPage() {
     <div className="flex flex-col gap-8">
       <PageHeader
         title="Overview"
-        description="Platform-wide operations: customer accounts, credits, markets, and trading activity. The market maker is reported separately."
+        description="Platform-wide operations: customer accounts, credits, markets, and trading activity."
       >
         <Button variant="outline" size="sm" render={<Link href="/users" />}>
           View users

@@ -82,19 +82,62 @@ function getInitials(
 
 // ─── Shared Pieces ────────────────────────────────────────────────────────────
 
-function LogoMark({ className }: { className?: string }) {
+export function BrandMark({ className }: { className?: string }) {
   return (
-    <div
+    <span
+      aria-hidden="true"
       className={cn(
-        "flex size-6 items-center justify-center bg-foreground",
-        className,
+        "inline-flex size-6 shrink-0 items-center justify-center rounded-[7px] bg-foreground text-background",
+        className
       )}
     >
-      <span className="text-[10px] font-bold leading-none tracking-tighter text-background">
-        MX
-      </span>
-    </div>
-  );
+      <svg viewBox="0 0 24 24" fill="none" className="size-3.5">
+        <path
+          d="M6.8 6.8 17.2 17.2M17.2 6.8 6.8 17.2"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+      </svg>
+    </span>
+  )
+}
+
+export function Brand({
+  className,
+  markClassName,
+  textClassName,
+  href = "/",
+  showWordmark = true,
+}: {
+  className?: string
+  markClassName?: string
+  textClassName?: string
+  href?: string
+  showWordmark?: boolean
+}) {
+  return (
+    <Link
+      href={href}
+      aria-label="MarketX home"
+      className={cn(
+        "inline-flex items-center gap-2.5 rounded-md focus-visible:outline-offset-4",
+        className
+      )}
+    >
+      <BrandMark className={markClassName} />
+      {showWordmark ? (
+        <span
+          className={cn(
+            "font-heading text-[15px] font-semibold tracking-[-0.03em] text-foreground",
+            textClassName
+          )}
+        >
+          MarketX
+        </span>
+      ) : null}
+    </Link>
+  )
 }
 
 function NavLink({
@@ -139,8 +182,7 @@ function DesktopSidebar() {
     <aside className="hidden h-full w-60 shrink-0 flex-col border-r border-border bg-sidebar lg:flex">
       {/* Logo */}
       <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border px-5">
-        <LogoMark />
-        <span className="text-sm font-semibold tracking-tight">MarketX</span>
+        <Brand />
         <span className="ml-auto bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
           Admin
         </span>
@@ -201,7 +243,7 @@ function TabletSidebar() {
   return (
     <aside className="hidden h-full w-[68px] shrink-0 flex-col border-r border-border bg-sidebar md:flex lg:hidden">
       <div className="flex h-14 shrink-0 items-center justify-center border-b border-border">
-        <LogoMark />
+        <Brand />
       </div>
 
       <nav
@@ -361,7 +403,7 @@ export function MobileTabBar() {
           className="border-border bg-sidebar p-0 pb-[env(safe-area-inset-bottom)]"
         >
           <div className="flex items-center gap-2.5 border-b border-border p-4">
-            <LogoMark />
+            <Brand />
             <SheetTitle className="flex-1 text-sm">Menu</SheetTitle>
             <SheetDescription className="sr-only">
               Other sections and account actions

@@ -71,14 +71,14 @@ export default function UsersPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Users"
-        description="Customer accounts with wallet balances and trading footprint. The market-maker liquidity account is available under its own filter."
+        description="Customer accounts with wallet balances and trading footprint."
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard
           label="Customer accounts"
           value={overview?.users.total.toLocaleString() ?? "—"}
-          sub="Excludes the liquidity account"
+          sub="All customer acciunts"
           icon={Users}
           index={0}
         />

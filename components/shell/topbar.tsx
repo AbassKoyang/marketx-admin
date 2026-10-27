@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { MoonStars, Sun } from "@phosphor-icons/react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
+import {Brand} from "@/components/shell/sidebar"
 
 const LABELS: Record<string, string> = {
   "/": "Overview",
@@ -44,9 +45,7 @@ export function Topbar() {
     <header className="sticky top-0 z-30 flex h-14 items-center gap-2.5 border-b border-border bg-background/80 px-4 backdrop-blur-md md:px-5 lg:px-6">
       {/* Mobile brand mark */}
       <div className="flex size-6 shrink-0 items-center justify-center bg-foreground md:hidden">
-        <span className="text-[10px] font-bold leading-none tracking-tighter text-background">
-          MX
-        </span>
+        <Brand showWordmark={false} />
       </div>
 
       {/* Page title */}

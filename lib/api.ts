@@ -131,8 +131,6 @@ export async function apiUpload<T>(
 
 export default apiClient;
 
-// ─── Error Message Helper ─────────────────────────────────────────────────────
-
 function messageFromValue(value: unknown): string | null {
   if (typeof value === "string") return value;
   if (Array.isArray(value)) {
@@ -144,7 +142,6 @@ function messageFromValue(value: unknown): string | null {
 
 export function getApiErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
-    // Service errors use `detail` as a list; field errors use arrays too.
     const detail = messageFromValue(error.body.detail);
     if (detail) return detail;
 
@@ -170,10 +167,6 @@ export function getApiErrorMessage(error: unknown): string {
   return "Something went wrong. Please try again.";
 }
 
-/**
- * Per-field DRF validation messages, ready to merge into form error state.
- * Service-level errors (`detail`, `non_field_errors`) are left for the toast.
- */
 export function getApiFieldErrors(error: unknown): Record<string, string> {
   if (!(error instanceof ApiError)) return {};
 

@@ -93,7 +93,7 @@ export default function PositionsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Positions"
-        description="Customer contracts held with the LMSR market maker, valued at the current price vector. Market-maker inventory lives on its own account."
+        description="Customer contracts held with the LMSR market maker, valued at the current price vector."
       />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
